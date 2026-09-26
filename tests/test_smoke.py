@@ -3,7 +3,7 @@
 import pytest
 from qenlo import QenloError
 
-from qenlo_memory.store import Embedder, Store, redact
+from qenlo_memory.store import COMPACT_EVERY, Embedder, Store, redact
 
 
 @pytest.fixture(scope="module")
@@ -50,6 +50,17 @@ def test_store(tmp_path, embed):
     s = Store(tmp_path, embed)
     assert s.vectors.stats().live_rows == 5
     assert s.recall("orphan fact about rust", k=1)[0]["text"] == "orphan fact about rust"
+    s.close()
+
+
+def test_wal_compacts(tmp_path, embed):
+    s = Store(tmp_path, embed)
+    for i in range(COMPACT_EVERY + 5):
+        s.remember(f"distinct fact number {i}", "semantic", "codex")
+    assert len(list(s.path.glob("wal-*.qwal"))) < COMPACT_EVERY
+    s.close()
+    s = Store(tmp_path, embed)  # startup flush folds whatever is left
+    assert not list(s.path.glob("wal-*.qwal")) and s.vectors.stats().live_rows == COMPACT_EVERY + 5
     s.close()
 
 

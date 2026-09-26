@@ -230,7 +230,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -619,12 +619,12 @@ wheels = [
 
 [[package]]
 name = "qenlo"
-version = "0.1.0a10"
+version = "0.1.0a11"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/0c/11c02e1005301de9082e9a813446a6b6a31705d570de84ab15ec7218abbc/qenlo-0.1.0a10-py3-none-macosx_14_0_arm64.whl", hash = "sha256:7f65fcd464e9968d5d4f0d31744eb63a2c07aa083fadc993c3e377bdcafdda33", size = 2216222, upload-time = "2026-09-25T20:18:48.728Z" },
-    { url = "https://files.pythonhosted.org/packages/43/27/47c5bdf3d5e96c2f8d517f84c79519ff3d0f89b4a9717d00777d517a27e4/qenlo-0.1.0a10-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:32ee88b3aea973b47c827d6b9e1f93dce82b76f7cb42900460938f83b5ceef3e", size = 2889057, upload-time = "2026-09-25T20:18:50.127Z" },
-    { url = "https://files.pythonhosted.org/packages/92/14/0117188ad0498cdd667c3848f4f06225be4acf2adde30bfd85785c6b8691/qenlo-0.1.0a10-py3-none-win_amd64.whl", hash = "sha256:c026d6180ed56efd7ed6a77978d3854068f3fd9ebba197cb5b19b1ff4ab6d012", size = 2829284, upload-time = "2026-09-25T20:18:51.274Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/cc/4b90bc42da59202c2df5c179a8ac5a7864814e8937376d655a13cedfd413/qenlo-0.1.0a11-py3-none-macosx_14_0_arm64.whl", hash = "sha256:653a0e59be0ea731c45fd7e60d431c283708222d45d3efd40779a45076e0e0ee", size = 2216426, upload-time = "2026-09-26T05:54:23.112Z" },
+    { url = "https://files.pythonhosted.org/packages/65/56/118399510d5381cfbcc751669054e0f487be98f3b47f742b4bff156ba104/qenlo-0.1.0a11-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:dd0e773cadb54c11361603a8842222270ec57c4de98a31e506e2f2c970ff4176", size = 2889792, upload-time = "2026-09-26T05:54:24.781Z" },
+    { url = "https://files.pythonhosted.org/packages/13/3e/fba37b3976e1150ca036a608572592557d6afb487837adf2aef8193b9f2e/qenlo-0.1.0a11-py3-none-win_amd64.whl", hash = "sha256:b099b6297ac805c69fbc97088582aac1b1bc10aa194c60ab887687fb5152ddbb", size = 2829548, upload-time = "2026-09-26T05:54:26.207Z" },
 ]
 
 [[package]]
@@ -644,7 +644,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=2.2,<3" },
-    { name = "qenlo", specifier = "==0.1.0a10" },
+    { name = "qenlo", specifier = "==0.1.0a11" },
 ]
 
 [package.metadata.requires-dev]
@@ -1033,8 +1033,8 @@ name = "uvicorn"
 version = "0.54.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "h11" },
+    { name = "click", marker = "python_full_version < '3.12' or python_full_version >= '3.14' or sys_platform != 'emscripten'" },
+    { name = "h11", marker = "python_full_version < '3.12' or python_full_version >= '3.14' or sys_platform != 'emscripten'" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/da/34/30e9280707135d2cfc589dfff3cb796bd07a3aeb1a3e415ba09dd89d7bb4/uvicorn-0.54.0.tar.gz", hash = "sha256:a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620", size = 112283, upload-time = "2026-09-25T06:52:37.601Z" }

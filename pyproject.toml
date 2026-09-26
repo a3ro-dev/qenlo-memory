@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "Akshat Singh Kushwaha", email = "akshatsingh14372@outlook.com" }]
 dependencies = [
-  "qenlo==0.1.0a10",
+  "qenlo==0.1.0a11",
   "mcp>=2.2,<3",
 ]
 

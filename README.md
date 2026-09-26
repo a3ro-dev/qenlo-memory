@@ -4,7 +4,7 @@ i use claude code, codex, cursor, antigravity and gemini cli. each one starts ev
 
 qenlo-memory is one local memory that all of them share. it's an MCP server plus a skill. every agent can read everything, and every memory records which agent wrote it, so `recall` might hand claude code a fix that codex found yesterday, labeled `by codex`.
 
-it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0a10`). building a real product on it was also a way to find out where it hurts.
+it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0a11`). building a real product on it was also a way to find out where it hurts.
 
 ## install
 
@@ -67,7 +67,7 @@ attribution comes from the MCP handshake. every client sends its own name (`clau
 | kind | what goes in it | example |
 | --- | --- | --- |
 | `episodic` | things that happened, timestamped. the hooks log every prompt here | "fixed the windows npm dll path, 2026-09-26" |
-| `semantic` | facts about you, a project, a tool | "the qenlo python sdk needs `==0.1.0a10`, plain pip skips pre-releases" |
+| `semantic` | facts about you, a project, a tool | "the qenlo python sdk needs `==0.1.0a11`, plain pip skips pre-releases" |
 | `procedural` | how to do something | "release: tag, run sdk-release.yml, verify SHA256SUMS" |
 | `long_term` | durable facts about you, loaded into every session | "prefers the smallest diff that works" |
 
@@ -106,11 +106,11 @@ qenlo-memory stop
 
 ## what building it on qenlo taught me
 
-qenlo is alpha, and this project hit three of its rough edges.
+qenlo is alpha, and this project ran into three of its edges. two are design choices, one was a bug.
 
 - records hold only an id, a `user_id`, a timestamp and a vector. there's no payload, so the text and provenance live in sqlite next to the collection and the ids line up.
 - deleted ids can never be reused. sqlite's `AUTOINCREMENT` has the same rule, so the two agree for free.
-- every write is its own WAL file, and nothing in the python api compacts them, so opening the collection gets slower forever. qenlo-memory rebuilds the collection from sqlite when there are more than 2,000 WAL files, and also whenever the two stores disagree (after a crash between the two commits, for example). the real fix belongs in qenlo.
+- every write is its own WAL file, and `open` replays them. in alpha.10, `flush()` was supposed to fold them into a snapshot but returned early after every commit, so the WAL only ever grew. building this is how i found it, and [alpha.11](https://github.com/a3ro-dev/qenlo/releases/tag/sdk-v0.1.0-alpha.11) fixes it. qenlo-memory calls `flush()` at startup and every 256 writes. it still rebuilds the collection from sqlite if the two ever disagree, for example after a crash between the two commits.
 
 ## limits
 

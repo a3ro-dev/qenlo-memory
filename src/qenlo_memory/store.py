@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -22,7 +23,7 @@ MODEL = os.environ.get("QENLO_MEMORY_MODEL", "snowflake-arctic-embed:22m")
 QUERY_PREFIX = os.environ.get("QENLO_MEMORY_QUERY_PREFIX", "Represent this sentence for searching relevant passages: ")
 _host = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
 OLLAMA = (_host if "://" in _host else "http://" + _host).rstrip("/")
-MAX_WAL = 2000
+COMPACT_EVERY = 256  # WAL files before we fold them into a qenlo snapshot
 
 SECRET = re.compile(
     r"\bsk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|AKIA[0-9A-Z]{16}"
@@ -95,12 +96,11 @@ class Store:
         self.search_backend = "none yet"
         self.vectors = self._open()
         live = self.db.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-        wal = len(list(self.path.glob("wal-*.qwal")))
-        # qenlo replays every WAL file on open and never compacts from Python, and a crash between the
-        # sqlite commit and the qenlo add leaves the two out of step. both get fixed the same way.
-        if self.vectors.stats().live_rows != live or wal > MAX_WAL:
+        # a crash between the sqlite commit and the qenlo add leaves the two out of step. rebuild from sqlite.
+        if self.vectors.stats().live_rows != live:
             self.vectors.close()
             self.vectors = self._rebuild()
+        self.vectors.flush()  # qenlo >= 0.1.0a11 folds the WAL into a snapshot here
 
     def _open(self) -> Collection:
         make = Collection.open if self.path.exists() else Collection.create
@@ -126,6 +126,12 @@ class Store:
         tmp.rename(self.path)
         shutil.rmtree(old, ignore_errors=True)
         return self._open()
+
+    def _compact(self) -> None:
+        """every qenlo write is one WAL file that open replays. fold them into a snapshot now and then."""
+        if len(list(self.path.glob("wal-*.qwal"))) >= COMPACT_EVERY:
+            with contextlib.suppress(QenloError):  # the write is already durable; compaction can wait
+                self.vectors.flush()
 
     def _rows(self, ids) -> dict[int, dict]:
         ids = list(ids)
@@ -165,6 +171,7 @@ class Store:
             except BaseException:
                 self.db.execute("ROLLBACK")
                 raise
+            self._compact()
         return {"id": mid, "kind": kind, "text": text, "agent": agent, "project": project, "created": now}
 
     def recall(self, query: str, kind: str = "", agent: str = "", project: str = "", k: int = 8) -> list[dict]:
@@ -204,6 +211,7 @@ class Store:
             except BaseException:
                 self.db.execute("ROLLBACK")
                 raise
+            self._compact()
         return row
 
     def context(self, project: str = "", query: str = "") -> str:
