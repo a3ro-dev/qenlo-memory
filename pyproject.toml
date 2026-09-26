@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qenlo-memory"
+version = "0.1.0"
+description = "One local memory for all your coding agents, on the qenlo vector database"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Akshat Singh Kushwaha", email = "akshatsingh14372@outlook.com" }]
+dependencies = [
+  "qenlo==0.1.0a10",
+  "mcp>=2.2,<3",
+]
+
+[project.scripts]
+qenlo-memory = "qenlo_memory.cli:main"
+
+[project.urls]
+Repository = "https://github.com/a3ro-dev/qenlo-memory"
+Qenlo = "https://github.com/a3ro-dev/qenlo"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qenlo_memory"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"skills/qenlo-memory/SKILL.md" = "qenlo_memory/SKILL.md"
+
+[dependency-groups]
+dev = ["pytest>=8"]
