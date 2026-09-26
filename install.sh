@@ -10,4 +10,4 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 command -v qenlo-memory >/dev/null 2>&1 && qenlo-memory stop >/dev/null 2>&1 || true
 uv tool install --force --quiet "$SRC"
-"$(uv tool dir --bin)/qenlo-memory" install </dev/tty
+"$(uv tool dir --bin)/qenlo-memory" install
