@@ -39,7 +39,7 @@ the hooks do two things. at session start they load your long-term memories and 
 
 ```
 claude code ─┐
-codex ───────┤ stdio   qenlo-memory mcp          (thin, starts fast)          
+codex ───────┤ stdio   qenlo-memory mcp          (thin, starts fast)
 cursor ──────┤ ─────>        │
 antigravity ─┤               │ http, 127.0.0.1:7437, token in ~/.qenlo-memory/token
 gemini ──────┘               v
