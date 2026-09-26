@@ -26,7 +26,7 @@ the script installs [uv](https://docs.astral.sh/uv/) if you don't have it, insta
 
 qenlo publishes wheels for windows x64, linux x86_64 and apple silicon macs. intel macs and linux arm aren't covered yet.
 
-then restart your agents.
+then restart your agents. run the same line again to upgrade. on windows it stops the running copies of the MCP server first, because windows won't replace files that are in use.
 
 ## what it wires up
 
