@@ -6,6 +6,7 @@ safe to run again: every edit replaces its own entry and leaves the rest of the 
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -157,15 +158,18 @@ def codex_mcp(cmd):
     path = H / ".codex" / "config.toml"
 
     def run(dry):
-        text = path.read_text(encoding="utf-8") if path.exists() else ""
-        if f"[mcp_servers.{NAME}]" in text:
+        old = path.read_text(encoding="utf-8") if path.exists() else ""
+        # drop our previous table (every line up to the next [table] header), then append the current one.
+        # "approve" means codex calls these tools without asking, which `codex exec` needs.
+        text = re.sub(rf"\n*\[mcp_servers\.{NAME}\]\n(?:(?!\[).*(?:\n|$))*", "\n", old).rstrip("\n")
+        block = (f"\n\n[mcp_servers.{NAME}]\ncommand = '{cmd[0]}'\nargs = {json.dumps([*cmd[1:], 'mcp'])}\n"
+                 'startup_timeout_sec = 60\ntool_timeout_sec = 300\ndefault_tools_approval_mode = "approve"\n')
+        new = (text + block) if text else block.lstrip("\n")
+        if new == old:
             return "ok"
-        block = (f"\n[mcp_servers.{NAME}]\ncommand = '{cmd[0]}'\nargs = {json.dumps([*cmd[1:], 'mcp'])}\n"
-                 "startup_timeout_sec = 60\ntool_timeout_sec = 300\n")
         if not dry:
             backup(path)
-            with path.open("a", encoding="utf-8") as f:
-                f.write(("\n" if text and not text.endswith("\n") else "") + block)
+            path.write_text(new, encoding="utf-8")
         return "wrote"
     return run
 
