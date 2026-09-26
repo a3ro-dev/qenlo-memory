@@ -10,12 +10,21 @@ it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector datab
 
 you need [ollama](https://ollama.com) running. it does the embeddings, on your GPU if you have one.
 
+mac and linux:
+
 ```bash
-uv tool install git+https://github.com/a3ro-dev/qenlo-memory
-qenlo-memory install
+curl -fsSL https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.sh | sh
 ```
 
-the first command installs the CLI, which depends only on `qenlo` and `mcp`. the second finds every coding agent on the machine and wires in the MCP server, the skill, a short always-on instruction and, where the agent supports them, hooks. run `qenlo-memory install --dry-run` first to see what it will touch. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries.
+windows (powershell):
+
+```powershell
+irm https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.ps1 | iex
+```
+
+the script installs [uv](https://docs.astral.sh/uv/) if you don't have it, installs the `qenlo-memory` CLI with it (the only dependencies are `qenlo` and `mcp`), pulls the embedding model into ollama, and runs `qenlo-memory install`. that last step finds every coding agent on the machine and wires in the MCP server, the skill, a short always-on instruction and, where the agent supports them, hooks. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries. `qenlo-memory install --dry-run` shows what it would touch without writing anything.
+
+qenlo publishes wheels for windows x64, linux x86_64 and apple silicon macs. intel macs and linux arm aren't covered yet.
 
 then restart your agents.
 

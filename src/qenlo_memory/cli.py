@@ -16,6 +16,8 @@ HOME = Path(os.environ.get("QENLO_MEMORY_HOME", Path.home() / ".qenlo-memory"))
 PORT = int(os.environ.get("QENLO_MEMORY_PORT", "7437"))
 URL = f"http://127.0.0.1:{PORT}"
 OPS = {"remember", "recall", "recent", "forget", "stats", "context"}
+# a hidden console instead of none: children of a console-less process get a fresh, visible window.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def token() -> str:
@@ -94,7 +96,7 @@ def ensure_daemon(wait: float = 180) -> None:
     HOME.mkdir(parents=True, exist_ok=True)
     log = open(HOME / "daemon.log", "ab")
     windows = sys.platform == "win32"
-    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0
+    flags = NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0
     daemon = subprocess.Popen(
         [sys.executable, "-m", "qenlo_memory.cli", "serve"],
         stdin=subprocess.DEVNULL, stdout=log, stderr=log,
@@ -143,7 +145,7 @@ def parent_name() -> str:
     """antigravity's app, ide and agy cli all send the same client name. the parent process tells them apart."""
     if sys.platform != "win32":
         return ""
-    out = subprocess.run(["tasklist", "/FI", f"PID eq {os.getppid()}", "/FO", "CSV", "/NH"], capture_output=True, text=True)
+    out = subprocess.run(["tasklist", "/FI", f"PID eq {os.getppid()}", "/FO", "CSV", "/NH"], capture_output=True, text=True, creationflags=NO_WINDOW)
     return out.stdout.lower()
 
 
@@ -294,7 +296,7 @@ def stop() -> None:
     with urllib.request.urlopen(URL + "/health", timeout=2) as r:
         pid = json.load(r)["pid"]
     if sys.platform == "win32":
-        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
+        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, creationflags=NO_WINDOW)
     else:
         os.kill(pid, 15)
     print(f"stopped daemon (pid {pid})")

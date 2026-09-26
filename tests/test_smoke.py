@@ -56,3 +56,7 @@ def test_redact():
     assert "sk-" not in redact("key is sk-abcdefghijklmnopqrstuv ok")
     assert redact("password: hunter22") == "password: [redacted]"
     assert redact("the token budget is small") == "the token budget is small"
+    for leak in ("DB_PASSWORD=Tr0ub4dor&3xyz", "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCY", '{"password": "Tr0ub4dor&3xyz"}'):
+        assert "Tr0ub4dor" not in redact(leak) and "wJalr" not in redact(leak), leak
+    for fine in ("run the task-runner-integration-tests first", "max_tokens=100000", "tokenizer: bpe"):
+        assert redact(fine) == fine, fine
