@@ -81,6 +81,18 @@ i started with torch and sentence-transformers in the daemon. that meant a 2GB C
 
 on the GPU: ollama runs the embeddings there when it can. qenlo's collection opens in `automatic` mode, which searches on the GPU through wgpu once more than 4,096 memories match a query and uses the CPU below that. qenlo made that call because moving a small matrix to the GPU costs more than searching it. `qenlo-memory stats` shows where both actually ran.
 
+## numbers
+
+measured on my laptop (rtx 4050, ollama 0.34.4) with 1,000 memories from four agents:
+
+| | p50 | p95 |
+| --- | --- | --- |
+| `recall`, end to end (embed the query, qenlo search, sqlite join) | 11.7 ms | 18.7 ms |
+| qenlo exact search alone | 0.18 ms | |
+| `remember`, including the durable WAL write | 23 ms (mean) | |
+
+almost all of a recall is the embedding call to ollama. the vector search is exact, not approximate, and at this size it's a rounding error. these are in-process numbers, and the MCP hop from an agent adds a local http request on top.
+
 ## use it yourself
 
 ```bash

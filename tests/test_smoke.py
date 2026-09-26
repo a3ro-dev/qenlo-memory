@@ -27,6 +27,7 @@ def test_store(tmp_path, embed):
     # the same fact from another agent is not stored twice
     again = s.remember("the user's laptop GPU is an RTX 4050 with 6GB of VRAM", "semantic", "codex", "qenloDB")
     assert again["duplicate"] and again["id"] == 1 and again["agent"] == "claude-code"
+    assert "duplicate" not in s.remember("the user's laptop GPU is an RTX 4060 with 8GB of VRAM", "semantic", "codex")
 
     assert "long-term memory" in s.context("qenloDB") and "by cursor" in s.context("qenloDB")
     assert s.forget(2)["agent"] == "codex"
@@ -40,14 +41,14 @@ def test_store(tmp_path, embed):
 
     # restart keeps everything, and ids keep counting up (qenlo never reuses a deleted id)
     s = Store(tmp_path, embed)
-    assert [m["id"] for m in s.recent()] == [3, 1]
-    assert s.remember("episodic event after restart", "episodic", "gemini-cli")["id"] == 4
+    assert [m["id"] for m in s.recent()] == [4, 3, 1]
+    assert s.remember("episodic event after restart", "episodic", "gemini-cli")["id"] == 5
 
     # a row qenlo never saw (crash between the two commits) is repaired on the next start
     s.db.execute("INSERT INTO memories(kind, text, agent, project, created) VALUES ('semantic', 'orphan fact about rust', 'x', '', 0)")
     s.close()
     s = Store(tmp_path, embed)
-    assert s.vectors.stats().live_rows == 4
+    assert s.vectors.stats().live_rows == 5
     assert s.recall("orphan fact about rust", k=1)[0]["text"] == "orphan fact about rust"
     s.close()
 

@@ -44,7 +44,7 @@ every result looks like this:
 - you discover how a project works: its build, test, and release steps, or a gotcha.
 - a meaningful decision gets made, along with why.
 
-write one fact per call, and make it make sense to an agent with zero context. pass `project` as the repo or folder name, or `""` if it applies everywhere. duplicates are detected and return the existing memory, so you don't need to check first.
+write one fact per call, and make it make sense to an agent with zero context. pass `project` as the repo or folder name, or `""` if it applies everywhere. saving the exact same text twice returns the existing memory. if a fact changed, `forget` the old one.
 
 ## never
 

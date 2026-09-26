@@ -22,7 +22,6 @@ MODEL = os.environ.get("QENLO_MEMORY_MODEL", "snowflake-arctic-embed:22m")
 QUERY_PREFIX = os.environ.get("QENLO_MEMORY_QUERY_PREFIX", "Represent this sentence for searching relevant passages: ")
 _host = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
 OLLAMA = (_host if "://" in _host else "http://" + _host).rstrip("/")
-DUPLICATE = 0.05  # cosine distance under this is the same memory said twice
 MAX_WAL = 2000
 
 SECRET = re.compile(
@@ -149,9 +148,11 @@ class Store:
             raise ValueError(f"kind must be one of: {', '.join(KINDS)}")
         vector = self.embed([text])[0]
         with self.lock:
-            same = self.vectors.search(vector, Filter(user_id=KINDS[kind]), k=1).results
-            if same and same[0].distance < DUPLICATE:
-                return {**self._rows([same[0].id])[same[0].id], "duplicate": True}
+            # only the exact same text is a duplicate. "port 3000" vs "port 3001" embed almost identically,
+            # and a similarity cutoff would silently keep the stale one.
+            same = self.db.execute("SELECT * FROM memories WHERE kind = ? AND lower(text) = lower(?)", (kind, text)).fetchone()
+            if same:
+                return {**dict(same), "duplicate": True}
             now = int(time.time() * 1000)
             self.db.execute("BEGIN IMMEDIATE")
             try:
