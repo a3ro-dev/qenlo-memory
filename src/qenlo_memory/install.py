@@ -207,7 +207,7 @@ def install(dry_run: bool = False) -> None:
     for agent, path, keys, style in MCP:
         if agent == "claude-code" and shutil.which("claude"):
             report.append(claude_cli(cmd, dry_run))
-        elif path.parent.exists():
+        elif path.parent.exists() or agent == "kiro" and (H / ".kiro").exists():  # kiro makes settings/ lazily
             report.append(edit_json(path, lambda d, k=keys, s=style: put(d, k, NAME, entry(s, cmd)), dry_run))
     report.append(codex_mcp(cmd, dry_run))
     for d in SKILL_DIRS:
