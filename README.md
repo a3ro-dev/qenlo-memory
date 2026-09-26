@@ -8,12 +8,14 @@ it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector datab
 
 ## install
 
+you need [ollama](https://ollama.com) running. it does the embeddings, on your GPU if you have one.
+
 ```bash
-uv tool install --torch-backend auto git+https://github.com/a3ro-dev/qenlo-memory
+uv tool install git+https://github.com/a3ro-dev/qenlo-memory
 qenlo-memory install
 ```
 
-the first command installs the CLI. `--torch-backend auto` picks a CUDA build of torch if you have an nvidia GPU and a CPU build if you don't. the second command finds every coding agent on the machine and wires in the MCP server, the skill, a short always-on instruction and, where the agent supports them, hooks. run `qenlo-memory install --dry-run` first to see what it will touch. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries.
+the first command installs the CLI, which depends only on `qenlo` and `mcp`. the second finds every coding agent on the machine and wires in the MCP server, the skill, a short always-on instruction and, where the agent supports them, hooks. run `qenlo-memory install --dry-run` first to see what it will touch. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries.
 
 then restart your agents.
 
@@ -37,12 +39,12 @@ the hooks do two things. at session start they load your long-term memories and 
 
 ```
 claude code ─┐
-codex ───────┤ stdio   qenlo-memory mcp          (thin, starts fast, no torch)
+codex ───────┤ stdio   qenlo-memory mcp          (thin, starts fast)          
 cursor ──────┤ ─────>        │
 antigravity ─┤               │ http, 127.0.0.1:7437, token in ~/.qenlo-memory/token
 gemini ──────┘               v
 hooks ────────────>  qenlo-memory serve          (one daemon, started on first use)
-                       ├─ embedding model on the GPU
+                       ├─ ollama                 embeddings, on the GPU
                        ├─ qenlo collection       vectors + search
                        └─ sqlite                 text, kind, agent, project, time
 ```
@@ -64,9 +66,11 @@ each kind is stored in qenlo's `user_id` field. qenlo can only filter on `user_i
 
 ### the model
 
-`Snowflake/snowflake-arctic-embed-xs`: 22M parameters, 384 dimensions, Apache-2.0, about 90MB. it scores 50.15 on BEIR retrieval, a lot more than you'd expect from something that size. set `QENLO_MEMORY_MODEL` to try another sentence-transformers model. changing it later means deleting `~/.qenlo-memory/vectors.qenlo` so it rebuilds at the new dimension.
+`snowflake-arctic-embed:22m` through ollama, pulled automatically on first start. it has 22M parameters and 384 dimensions, it's Apache-2.0, and it takes 39MB of VRAM on my rtx 4050. its model card reports 50.15 NDCG@10 on MTEB retrieval, which is a lot for something that small. set `QENLO_MEMORY_MODEL` to any ollama embedding model. if it isn't an arctic model, also set `QENLO_MEMORY_QUERY_PREFIX=""`. a model with a different dimension needs a fresh `~/.qenlo-memory/vectors.qenlo`.
 
-on the GPU: embeddings run on CUDA when torch can see one. qenlo's collection opens in `automatic` mode, which searches on the GPU through wgpu once more than 4,096 memories match a query and uses the CPU below that. qenlo made that call because moving a small matrix to the GPU costs more than searching it. `qenlo-memory stats` shows where both actually ran.
+i started with torch and sentence-transformers in the daemon. that meant a 2GB CUDA download to run a 22M-parameter model, while ollama was already sitting on the GPU. so embeddings go through ollama's local http api, and this package has no ML dependencies at all.
+
+on the GPU: ollama runs the embeddings there when it can. qenlo's collection opens in `automatic` mode, which searches on the GPU through wgpu once more than 4,096 memories match a query and uses the CPU below that. qenlo made that call because moving a small matrix to the GPU costs more than searching it. `qenlo-memory stats` shows where both actually ran.
 
 ## use it yourself
 
