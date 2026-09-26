@@ -42,7 +42,7 @@ then restart your agents.
 
 it only touches agents whose config directory already exists.
 
-the hooks do two things. at session start they load your long-term memories and the latest ones for the current project into the agent's context. on every prompt they log what you asked as an episodic memory. agents without hooks get the same behavior from the skill and the instruction, as long as they actually follow it.
+the hooks do two things. at session start they load your long-term memories and the latest ones for the current project into the agent's context. on every prompt they log what you asked as an episodic memory. agents without hooks get the same behavior from the skill and the instruction, as long as they actually follow it. codex asks you to trust new hooks before it runs them, so open codex once after installing and approve the two qenlo-memory hooks.
 
 ## how it works
 

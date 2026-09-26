@@ -225,7 +225,7 @@ def hook(event: str, agent: str) -> None:
             print(text)
     elif event == "prompt":
         prompt = str(payload.get("prompt") or payload.get("user_prompt") or "").strip()
-        if len(prompt) >= 10:
+        if len(prompt) >= 10 and not prompt.startswith("<"):  # "<task-notification>" and friends aren't the user
             call("remember", text="user asked: " + prompt[:2000], kind="episodic", agent=agent, project=project)
         if agent == "cursor":
             print(json.dumps({"continue": True}))
