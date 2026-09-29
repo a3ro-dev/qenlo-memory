@@ -76,3 +76,23 @@ def test_redact():
         assert "Tr0ub4dor" not in redact(leak) and "wJalr" not in redact(leak), leak
     for fine in ("run the task-runner-integration-tests first", "max_tokens=100000", "tokenizer: bpe"):
         assert redact(fine) == fine, fine
+
+
+def test_link(tmp_path):
+    from qenlo_memory.install import link
+
+    brain = tmp_path / "brain" / "skill"
+    brain.mkdir(parents=True)
+    (brain / "SKILL.md").write_text("new", encoding="utf-8")
+    old = tmp_path / "agent" / "skills" / "qenlo-memory"  # a copy from an older install
+    old.mkdir(parents=True)
+    (old / "SKILL.md").write_text("old", encoding="utf-8")
+    assert link(old, brain, False) == "wrote" and (old / "SKILL.md").read_text(encoding="utf-8") == "new"
+    assert link(old, brain, False) == "ok"
+    (brain / "SKILL.md").write_text("edited once, seen everywhere", encoding="utf-8")
+    assert (old / "SKILL.md").read_text(encoding="utf-8") == "edited once, seen everywhere"
+
+    mine = tmp_path / "agent" / "skills" / "users-own"
+    mine.mkdir()
+    (mine / "notes.txt").write_text("keep", encoding="utf-8")
+    assert "aren't ours" in link(mine, brain, False) and (mine / "notes.txt").exists()

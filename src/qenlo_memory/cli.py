@@ -141,6 +141,15 @@ CLIENTS = {
 }
 
 
+def shell_agent() -> str:
+    """which harness's shell is running us. AI_AGENT is the shared convention ("claude-code_2-1-281_agent"),
+    the rest are what each harness sets for its own commands."""
+    if os.environ.get("AI_AGENT"):
+        return os.environ["AI_AGENT"].split("_")[0]
+    known = {"CLAUDECODE": "claude-code", "GEMINI_CLI": "gemini-cli", "CODEX_SANDBOX": "codex", "CURSOR_AGENT": "cursor"}
+    return next((name for var, name in known.items() if os.environ.get(var)), "cli")
+
+
 def parent_name() -> str:
     """antigravity's app, ide and agy cli all send the same client name. the parent process tells them apart."""
     if sys.platform != "win32":
@@ -245,7 +254,7 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("text")
     r.add_argument("--kind", default="semantic")
     r.add_argument("--project", default="")
-    r.add_argument("--agent", default="cli")
+    r.add_argument("--agent", default=shell_agent())
     q = sub.add_parser("recall")
     q.add_argument("query")
     q.add_argument("-k", type=int, default=8)
@@ -258,8 +267,9 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("forget").add_argument("id", type=int)
     sub.add_parser("stats")
     sub.add_parser("stop", help="stop the daemon")
-    i = sub.add_parser("install", help="wire the MCP server, skill and hooks into every agent found")
+    i = sub.add_parser("install", help="link the brain, rules, skill and hooks into every agent found")
     i.add_argument("--dry-run", action="store_true")
+    i.add_argument("--mcp", action="store_true", help="also wire the MCP server (needs qenlo-memory[mcp])")
     a = p.parse_args(argv)
 
     if a.cmd == "serve":
@@ -287,7 +297,7 @@ def main(argv: list[str] | None = None) -> None:
     elif a.cmd == "install":
         from .install import install
 
-        install(dry_run=a.dry_run)
+        install(dry_run=a.dry_run, mcp=a.mcp)
 
 
 def stop() -> None:
