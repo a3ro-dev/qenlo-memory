@@ -2,7 +2,7 @@
 
 i use claude code, codex, cursor, antigravity and gemini cli. each one starts every session knowing nothing, and none of them knows what the others figured out an hour ago. so the same release steps, the same preferences and the same "no, we tried that" get explained again, once per agent.
 
-qenlo-memory is one local memory that all of them share. it's an MCP server plus a skill. every agent can read everything, and every memory records which agent wrote it, so `recall` might hand claude code a fix that codex found yesterday, labeled `by codex`.
+qenlo-memory is one local memory that all of them share. it's a CLI your agents run from their shell, one brain folder they all link to, and hooks. an MCP server is still there for agents without a shell. every agent can read everything, and every memory records which agent wrote it, so `recall` might hand claude code a fix that codex found yesterday, labeled `by codex`.
 
 it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0a11`). building a real product on it was also a way to find out where it hurts.
 
@@ -22,23 +22,35 @@ windows (powershell):
 irm https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.ps1 | iex
 ```
 
-the script installs [uv](https://docs.astral.sh/uv/) if you don't have it, installs the `qenlo-memory` CLI with it (the only dependencies are `qenlo` and `mcp`), pulls the embedding model into ollama, and runs `qenlo-memory install`. that last step finds every coding agent on the machine and wires in the MCP server, the skill, a short always-on instruction and, where the agent supports them, hooks. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries. `qenlo-memory install --dry-run` shows what it would touch without writing anything.
+the script installs [uv](https://docs.astral.sh/uv/) if you don't have it, installs the `qenlo-memory` CLI with it (the only dependencies are `qenlo` and `mcp`), pulls the embedding model into ollama, and runs `qenlo-memory install`. that last step writes the brain folder, `~/.qenlo-memory/brain/`, then finds every coding agent on the machine and links the skill and the always-on instruction into it, lets the agent run `qenlo-memory` without asking where it can, and adds hooks where the agent supports them. `install --mcp` also wires the MCP server into every agent. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries. `qenlo-memory install --dry-run` shows what it would touch without writing anything.
 
 qenlo publishes wheels for windows x64, linux x86_64 and apple silicon macs. intel macs and linux arm aren't covered yet.
 
-then restart your agents. run the same line again to upgrade. on windows it stops the running copies of the MCP server first, because windows won't replace files that are in use.
+then restart your agents. run the same line again to upgrade. the upgrade rewrites the brain, and every agent sees it through its links. on windows it stops the running copies of the MCP server first, because windows won't replace files that are in use.
 
 ## what it wires up
 
-| agent | MCP server | skill | instructions | hooks |
-| --- | --- | --- | --- | --- |
-| claude code | `~/.claude.json` (via `claude mcp add-json`) | `~/.claude/skills` | `~/.claude/rules/qenlo-memory.md` | SessionStart, UserPromptSubmit |
-| codex (cli, app, ide) | `~/.codex/config.toml` | `~/.agents/skills`, `~/.codex/skills` | `~/.codex/AGENTS.md` | `~/.codex/hooks.json` |
-| cursor (ide, cursor-agent) | `~/.cursor/mcp.json` | `~/.agents/skills` | `~/.cursor/rules/qenlo-memory.mdc` | `~/.cursor/hooks.json` |
-| antigravity (app, ide, `agy`) | `~/.gemini/config/mcp_config.json` | `~/.gemini/config/skills` | `~/.gemini/config/rules/` | no |
-| gemini cli | `~/.gemini/settings.json` | `~/.agents/skills` | `~/.gemini/GEMINI.md` | SessionStart, BeforeAgent |
-| opencode | `~/.config/opencode/opencode.jsonc` | `~/.agents/skills` | `~/.config/opencode/AGENTS.md` | no |
-| kiro, qwen, qoder, windsurf, vs code, claude desktop | their MCP files | where supported | where supported | no |
+```
+~/.qenlo-memory/brain/
+  RULES.md        the always-on instruction
+  skill/SKILL.md  the skill
+  profile.md      your long-term memories, rewritten whenever one changes
+```
+
+| agent | skill (link to brain/skill) | instructions | hooks |
+| --- | --- | --- | --- |
+| claude code | `~/.claude/skills` | `~/.claude/rules/qenlo-memory.md` (link) | SessionStart, UserPromptSubmit |
+| codex (cli, app, ide) | `~/.agents/skills`, `~/.codex/skills` | `~/.codex/AGENTS.md` | `~/.codex/hooks.json` |
+| cursor (ide, cursor-agent) | `~/.agents/skills` | `~/.cursor/rules/qenlo-memory.mdc` | `~/.cursor/hooks.json` |
+| antigravity (app, ide, `agy`) | `~/.gemini/config/skills` | `~/.gemini/config/rules/qenlo-memory.md` (link) | no |
+| gemini cli | `~/.agents/skills` | `~/.gemini/GEMINI.md` | SessionStart, BeforeAgent |
+| opencode | `~/.agents/skills` | `~/.config/opencode/AGENTS.md` | no |
+| kiro, qwen, qoder, windsurf | where supported | where supported | no |
+| vs code, claude desktop | MCP only, with `install --mcp` | | |
+
+files that are only ours are links into the brain. files you write in too (`AGENTS.md`, `GEMINI.md`...) get a short marked block that points at the brain instead, because a link would take the whole file. directories are symlinks, or junctions on windows, which need no admin. file links need developer mode on windows; without it you get a copy that the next install refreshes.
+
+claude code and gemini cli get `qenlo-memory` added to their shell allowlist, so recalls don't ask for permission. codex keeps the MCP server even without `--mcp`: its sandbox blocks network by default, and the CLI reaches the daemon over localhost. running `install` without `--mcp` takes the old MCP entries out of every other agent.
 
 it only touches agents whose config directory already exists.
 
@@ -47,12 +59,13 @@ the hooks do two things. at session start they load your long-term memories and 
 ## how it works
 
 ```
-claude code ─┐
-codex ───────┤ stdio   qenlo-memory mcp          (thin, starts fast)
+claude code ─┐ shell   qenlo-memory recall/remember   (thin client)
 cursor ──────┤ ─────>        │
-antigravity ─┤               │ http, 127.0.0.1:7437, token in ~/.qenlo-memory/token
-gemini ──────┘               v
-hooks ────────────>  qenlo-memory serve          (one daemon, started on first use)
+gemini ──────┤               │
+codex ───────┤ stdio   qenlo-memory mcp          (codex, and anything wired with --mcp)
+antigravity ─┘ ─────>        │ http, 127.0.0.1:7437, token in ~/.qenlo-memory/token
+hooks ────────────>          v
+                     qenlo-memory serve          (one daemon, started on first use)
                        ├─ ollama                 embeddings, on the GPU
                        ├─ qenlo collection       vectors + search
                        └─ sqlite                 text, kind, agent, project, time
@@ -60,7 +73,7 @@ hooks ────────────>  qenlo-memory serve          (one da
 
 the daemon exists because of how qenlo works. it takes an exclusive process lock on a collection. if every agent launched its own server against the same store, the first one would win and the rest would get `collection is already open by another handle or process`. so there's exactly one owner. everything else is a thin client that starts the daemon if it isn't already running.
 
-attribution comes from the MCP handshake. every client sends its own name (`claude-code`, `codex-mcp-client`, `cursor-vscode`, `gemini-cli-mcp-client`, ...), and the server maps that to a short label. i couldn't use a flag in each agent's config here, because several agents share one config file. cursor ide and cursor-agent read the same `mcp.json`, and codex's cli, desktop app and ide extension read the same `config.toml`.
+attribution comes from the shell. agents set environment variables for the commands they run: `AI_AGENT` is becoming the shared one (claude code sets `claude-code_<version>_agent`), and there are per-harness ones like `CLAUDECODE` and `GEMINI_CLI`. when none match, the memory is written `by cli` and the instruction asks the agent to pass `--agent`. over MCP, the name comes from the handshake instead: every client sends its own name (`codex-mcp-client`, `cursor-vscode`, ...), and the server maps that to a short label.
 
 ### four kinds of memory
 
@@ -117,6 +130,7 @@ qenlo is alpha, and this project ran into three of its edges. two are design cho
 - it's local and single-user. the daemon only listens on 127.0.0.1 and wants a token from your home directory, but any process running as you can read your memories.
 - the antigravity app and the antigravity ide send the same client name. `agy` is told apart by its parent process. the other two both show up as `antigravity`.
 - vs code copilot also reads hooks from `~/.claude/settings.json`, so its prompts get logged as `claude-code`.
+- memories written from a shell whose harness sets none of the known variables show up as `by cli` unless the agent passes `--agent`.
 - secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.
 - there's no consolidation or decay yet. i'll add them when plain similarity plus recency stops being enough.
 
