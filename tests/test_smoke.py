@@ -17,6 +17,8 @@ def test_store(tmp_path, embed):
     b = s.remember("release qenlo: tag the commit, then run sdk-release.yml, then verify SHA256SUMS", "procedural", "codex", "qenloDB")
     c = s.remember("the user prefers lower-case prose", "long_term", "cursor")
     assert (a["id"], b["id"], c["id"]) == (1, 2, 3)
+    profile = tmp_path / "brain" / "profile.md"
+    assert "by cursor" in profile.read_text(encoding="utf-8") and "RTX" not in profile.read_text(encoding="utf-8")
 
     # any agent reads every agent's memories, and each hit says who wrote it
     hit = s.recall("what graphics card does the user have", k=1)[0]
@@ -50,6 +52,8 @@ def test_store(tmp_path, embed):
     s = Store(tmp_path, embed)
     assert s.vectors.stats().live_rows == 5
     assert s.recall("orphan fact about rust", k=1)[0]["text"] == "orphan fact about rust"
+    s.forget(3)  # forgetting a long-term memory takes it out of the profile too
+    assert "lower-case" not in profile.read_text(encoding="utf-8")
     s.close()
 
 

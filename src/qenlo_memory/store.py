@@ -101,6 +101,7 @@ class Store:
             self.vectors.close()
             self.vectors = self._rebuild()
         self.vectors.flush()  # qenlo >= 0.1.0a11 folds the WAL into a snapshot here
+        self._profile()
 
     def _open(self) -> Collection:
         make = Collection.open if self.path.exists() else Collection.create
@@ -132,6 +133,14 @@ class Store:
         if len(list(self.path.glob("wal-*.qwal"))) >= COMPACT_EVERY:
             with contextlib.suppress(QenloError):  # the write is already durable; compaction can wait
                 self.vectors.flush()
+
+    def _profile(self) -> None:
+        """the long-term tier as a plain file in the brain folder, for agents without session hooks."""
+        brain = self.root / "brain"
+        brain.mkdir(exist_ok=True)
+        rows = self.recent(50, kind="long_term")
+        text = "# long-term memory about the user (from every agent, newest first)\n\n" + "".join(f"- {line(m)}\n" for m in rows)
+        (brain / "profile.md").write_text(text, encoding="utf-8")
 
     def _rows(self, ids) -> dict[int, dict]:
         ids = list(ids)
@@ -172,6 +181,8 @@ class Store:
                 self.db.execute("ROLLBACK")
                 raise
             self._compact()
+            if kind == "long_term":
+                self._profile()
         return {"id": mid, "kind": kind, "text": text, "agent": agent, "project": project, "created": now}
 
     def recall(self, query: str, kind: str = "", agent: str = "", project: str = "", k: int = 8) -> list[dict]:
@@ -212,6 +223,8 @@ class Store:
                 self.db.execute("ROLLBACK")
                 raise
             self._compact()
+            if row["kind"] == "long_term":
+                self._profile()
         return row
 
     def context(self, project: str = "", query: str = "") -> str:
