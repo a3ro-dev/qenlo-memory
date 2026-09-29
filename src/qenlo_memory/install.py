@@ -280,13 +280,16 @@ def codex_mcp(cmd):
 
 
 def hooks(path: Path, agent: str, events: dict, cmd, style: str):
-    """events maps the agent's own event name to our hook, start or prompt."""
+    """events maps the agent's own event name to our hook. None takes our old entry out of that event."""
     def change(d):
         if style == "cursor":
             d.setdefault("version", 1)
         table = d.setdefault("hooks", {})
         for event, kind in events.items():
             keep = [g for g in table.get(event, []) if NAME not in json.dumps(g)]
+            if kind is None:
+                table.update({event: keep}) if keep else table.pop(event, None)
+                continue
             command = " ".join(f'"{c}"' for c in cmd) + f" hook {kind} --agent {agent}"
             if style == "cursor":
                 keep.append({"command": command, "timeout": 60})
@@ -319,16 +322,16 @@ def agents(cmd, mcp: bool):
             "mcp": claude_mcp(cmd, mcp), "skill": links(skill, sk(H / ".claude" / "skills")),
             "rules": links(rules, H / ".claude" / "rules" / "qenlo-memory.md"),
             "allow": allow(H / ".claude" / "settings.json", ["permissions", "allow"], "Bash(qenlo-memory:*)"),
-            "hooks": hooks(H / ".claude" / "settings.json", "claude-code", {"SessionStart": "start", "UserPromptSubmit": "prompt"}, cmd, "claude")}),
+            "hooks": hooks(H / ".claude" / "settings.json", "claude-code", {"SessionStart": "start", "UserPromptSubmit": None}, cmd, "claude")}),
         # codex keeps MCP: its sandbox blocks network by default, and the CLI talks to the daemon over localhost.
         ("codex", H / ".codex", {
             "mcp": codex_mcp(cmd), "skill": links(skill, shared, sk(H / ".codex" / "skills")),
             "rules": files((H / ".codex" / "AGENTS.md", POINTER)),
-            "hooks": hooks(H / ".codex" / "hooks.json", "codex", {"SessionStart": "start", "UserPromptSubmit": "prompt"}, cmd, "codex")}),
+            "hooks": hooks(H / ".codex" / "hooks.json", "codex", {"SessionStart": "start", "UserPromptSubmit": None}, cmd, "codex")}),
         ("cursor", H / ".cursor", {
             "mcp": mcp_json(H / ".cursor" / "mcp.json", ["mcpServers"], "plain", cmd, mcp), "skill": links(skill, shared),
             "rules": files((H / ".cursor" / "rules" / "qenlo-memory.mdc", "---\ndescription: shared memory across agents\nalwaysApply: true\n---\n" + POINTER)),
-            "hooks": hooks(H / ".cursor" / "hooks.json", "cursor", {"sessionStart": "start", "beforeSubmitPrompt": "prompt"}, cmd, "cursor")}),
+            "hooks": hooks(H / ".cursor" / "hooks.json", "cursor", {"sessionStart": "start", "beforeSubmitPrompt": None}, cmd, "cursor")}),
         ("antigravity", agy, {
             "mcp": mcp_json(agy / "mcp_config.json", ["mcpServers"], "plain", cmd, mcp), "skill": links(skill, sk(agy / "skills")),
             "rules": links(rules, agy / "rules" / "qenlo-memory.md")}),
@@ -336,7 +339,7 @@ def agents(cmd, mcp: bool):
             "mcp": mcp_json(H / ".gemini" / "settings.json", ["mcpServers"], "plain", cmd, mcp), "skill": links(skill, shared),
             "rules": files((H / ".gemini" / "GEMINI.md", POINTER)),
             "allow": allow(H / ".gemini" / "settings.json", ["tools", "allowed"], "run_shell_command(qenlo-memory)"),
-            "hooks": hooks(H / ".gemini" / "settings.json", "gemini-cli", {"SessionStart": "start", "BeforeAgent": "prompt"}, cmd, "gemini")}),
+            "hooks": hooks(H / ".gemini" / "settings.json", "gemini-cli", {"SessionStart": "start", "BeforeAgent": None}, cmd, "gemini")}),
         ("opencode", oc, {
             "mcp": mcp_json(oc_file, ["mcp"], "opencode", cmd, mcp), "skill": links(skill, shared), "rules": files((oc / "AGENTS.md", POINTER))}),
         ("kiro", H / ".kiro", {

@@ -54,7 +54,9 @@ claude code and gemini cli get `qenlo-memory` added to their shell allowlist, so
 
 it only touches agents whose config directory already exists.
 
-the hooks do two things. at session start they load your long-term memories and the latest ones for the current project into the agent's context. on every prompt they log what you asked as an episodic memory. agents without hooks get the same behavior from the skill and the instruction, as long as they actually follow it. codex asks you to trust new hooks before it runs them, so open codex once after installing and approve the two qenlo-memory hooks.
+the hook loads your long-term memories and the latest ones for the current project into the agent's context at session start. agents without hooks get the same from the skill and the instruction, as long as they actually follow it. codex asks you to trust new hooks before it runs them, so open codex once after installing and approve the qenlo-memory hook.
+
+it used to log every prompt too. in three days that was 175 of my 288 memories, things like "push to gh" and whole pasted chats, some with passwords in them, and they buried the real ones in recall. a prompt isn't a memory. the conclusion an agent writes down after the work is, so that's what episodic holds now.
 
 ## how it works
 
@@ -79,7 +81,7 @@ attribution comes from the shell. agents set environment variables for the comma
 
 | kind | what goes in it | example |
 | --- | --- | --- |
-| `episodic` | things that happened, timestamped. the hooks log every prompt here | "fixed the windows npm dll path, 2026-09-26" |
+| `episodic` | things that happened, timestamped. decisions, fixes, how a session ended | "fixed the windows npm dll path, 2026-09-26" |
 | `semantic` | facts about you, a project, a tool | "the qenlo python sdk needs `==0.1.0a11`, plain pip skips pre-releases" |
 | `procedural` | how to do something | "release: tag, run sdk-release.yml, verify SHA256SUMS" |
 | `long_term` | durable facts about you, loaded into every session | "prefers the smallest diff that works" |
@@ -129,7 +131,6 @@ qenlo is alpha, and this project ran into three of its edges. two are design cho
 
 - it's local and single-user. the daemon only listens on 127.0.0.1 and wants a token from your home directory, but any process running as you can read your memories.
 - the antigravity app and the antigravity ide send the same client name. `agy` is told apart by its parent process. the other two both show up as `antigravity`.
-- vs code copilot also reads hooks from `~/.claude/settings.json`, so its prompts get logged as `claude-code`.
 - memories written from a shell whose harness sets none of the known variables show up as `by cli` unless the agent passes `--agent`.
 - secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.
 - there's no consolidation or decay yet. i'll add them when plain similarity plus recency stops being enough.

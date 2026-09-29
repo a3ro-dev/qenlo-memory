@@ -216,7 +216,9 @@ def mcp_server(agent: str) -> None:
 
 
 def hook(event: str, agent: str) -> None:
-    """agent hooks pass a json payload on stdin. start prints context, prompt logs an episode."""
+    """agent hooks pass a json payload on stdin. start prints context.
+    prompt used to log every prompt as an episode, which buried the real memories. it stays a no-op
+    for agents still wired to it until install runs again."""
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     try:
         payload = json.loads(raw) if raw.strip() else {}
@@ -233,9 +235,6 @@ def hook(event: str, agent: str) -> None:
         elif text:
             print(text)
     elif event == "prompt":
-        prompt = str(payload.get("prompt") or payload.get("user_prompt") or "").strip()
-        if len(prompt) >= 10 and not prompt.startswith("<"):  # "<task-notification>" and friends aren't the user
-            call("remember", text="user asked: " + prompt[:2000], kind="episodic", agent=agent, project=project)
         if agent == "cursor":
             print(json.dumps({"continue": True}))
 
