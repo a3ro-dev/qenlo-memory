@@ -28,7 +28,8 @@ COMPACT_EVERY = 256  # WAL files before we fold them into a qenlo snapshot
 SECRET = re.compile(
     r"\bsk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|AKIA[0-9A-Z]{16}"
     r"|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"
-    r"|((?i:(?<![a-z0-9])(?:password|passwd|secret(?:_access)?_key|secret|api[_-]?key|token)\b)[\"']?\s*[:=]\s*[\"']?)\S{6,}"
+    r"|((?i:(?<![a-z0-9])(?:password|passwd|pass|pwd|secret(?:_access)?_key|secret|api[_-]?key|token)\b)[\"']?\s*[:=]\s*[\"']?"
+    r"|(?i:(?<![a-z0-9])password\s+(?:is|as|to)\s+)[\"']?)\S{6,}"
 )
 
 
