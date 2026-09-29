@@ -243,7 +243,7 @@ def main(argv: list[str] | None = None) -> None:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(prog="qenlo-memory", description="one memory for all your coding agents")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
     sub.add_parser("serve", help="run the daemon in the foreground")
     sub.add_parser("mcp", help="stdio MCP server (what agents launch)").add_argument("--agent", default="")
     h = sub.add_parser("hook", help="called by agent hooks")
@@ -270,8 +270,14 @@ def main(argv: list[str] | None = None) -> None:
     i.add_argument("--dry-run", action="store_true")
     i.add_argument("--mcp", action="store_true", help="also wire the MCP server (needs qenlo-memory[mcp])")
     a = p.parse_args(argv)
+    from . import look
 
-    if a.cmd == "serve":
+    # a terminal gets the pretty version. agents pipe us, and they get the plain lines they parse.
+    rows = look.memories if look.COLOR else show
+
+    if a.cmd is None:
+        print(look.welcome(call("stats")) if look.COLOR else p.format_help())
+    elif a.cmd == "serve":
         serve()
     elif a.cmd == "mcp":
         mcp_server(a.agent)
@@ -282,15 +288,22 @@ def main(argv: list[str] | None = None) -> None:
             print(f"qenlo-memory hook skipped: {e}", file=sys.stderr)
     elif a.cmd == "remember":
         r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project)
-        print(("already remembered as #" if r.get("duplicate") else "remembered #") + str(r["id"]))
+        if not look.COLOR:
+            print(("already remembered as #" if r.get("duplicate") else "remembered #") + str(r["id"]))
+        elif r.get("duplicate"):
+            print(look.done(f"already remembered as #{r['id']}", f"by {r['agent']}"))
+        else:
+            print(look.done(f"remembered #{r['id']}", f"{r['kind'].replace('_', ' ')} · by {r['agent']}"))
     elif a.cmd == "recall":
-        print(show(call("recall", query=a.query, kind=a.kind, agent=a.agent, project=a.project, k=a.k)))
+        print(rows(call("recall", query=a.query, kind=a.kind, agent=a.agent, project=a.project, k=a.k)))
     elif a.cmd == "recent":
-        print(show(call("recent", n=a.n, kind=a.kind, agent=a.agent, project=a.project)))
+        print(rows(call("recent", n=a.n, kind=a.kind, agent=a.agent, project=a.project)))
     elif a.cmd == "forget":
-        print("forgot #" + str(call("forget", id=a.id)["id"]))
+        r = call("forget", id=a.id)
+        print(look.done(f"forgot #{r['id']}", r["text"][:70]) if look.COLOR else f"forgot #{r['id']}")
     elif a.cmd == "stats":
-        print(json.dumps(call("stats"), indent=2))
+        s = call("stats")
+        print(look.stats(s) if look.COLOR else json.dumps(s, indent=2))
     elif a.cmd == "stop":
         stop()
     elif a.cmd == "install":

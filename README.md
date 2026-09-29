@@ -119,6 +119,8 @@ qenlo-memory stats
 qenlo-memory stop
 ```
 
+run plain `qenlo-memory` for a welcome screen. in a terminal, memories come out as cards with the kind, agent and project on top, and `stats` draws who wrote what. piped, which is how agents run it, it's the same one-line-per-memory text as always. `NO_COLOR` turns the styling off and `FORCE_COLOR` turns it on.
+
 ## what building it on qenlo taught me
 
 qenlo is alpha, and this project ran into three of its edges. two are design choices, one was a bug.

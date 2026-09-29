@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from .cli import HOME
+from .look import BOLD, DIM, GREEN, RED, paint
 
 H = Path.home()
 if os.name == "nt":
@@ -55,17 +56,6 @@ you share one long-term memory with every coding agent the user runs. before rea
 full rules: {(BRAIN / "RULES.md").as_posix()} · the user's profile: {(BRAIN / "profile.md").as_posix()}
 {MARK}
 """
-
-# --- looks. qenlo's accent is #B53C2F; status never relies on color alone. ---
-COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
-if COLOR and os.name == "nt":
-    os.system("")  # switches the classic windows console into ANSI mode
-RED, DIM, GREEN, BOLD = "38;2;181;60;47", "38;2;110;116;112", "38;2;106;153;78", "1"
-
-
-def paint(text: str, code: str) -> str:
-    return f"\x1b[{code}m{text}\x1b[0m" if COLOR else text
-
 
 WORDMARK = {  # dot-matrix letters, like the qenlo landing page. 5 rows each
     "q": [".###", "#..#", "#..#", ".###", "...#"],
