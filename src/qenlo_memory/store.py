@@ -16,11 +16,10 @@ from pathlib import Path
 
 from qenlo import Collection, Filter, QenloError, Record
 
+from . import models
+
 # qenlo filters on user_id by equality, so the memory kind lives there and kind filters run natively.
 KINDS = {"episodic": 1, "semantic": 2, "procedural": 3, "long_term": 4}
-MODEL = os.environ.get("QENLO_MEMORY_MODEL", "snowflake-arctic-embed:22m")
-# arctic-embed wants this on queries and nothing on stored text. set to "" for models that don't.
-QUERY_PREFIX = os.environ.get("QENLO_MEMORY_QUERY_PREFIX", "Represent this sentence for searching relevant passages: ")
 _host = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
 OLLAMA = (_host if "://" in _host else "http://" + _host).rstrip("/")
 COMPACT_EVERY = 256  # WAL files before we fold them into a qenlo snapshot
@@ -46,18 +45,20 @@ def line(m: dict) -> str:
 class Embedder:
     """embeddings come from ollama, which already runs them on the GPU. no torch in this process."""
 
-    def __init__(self, model: str = MODEL):
-        self.model = model
+    def __init__(self, model: models.Model | None = None):
+        self.spec = model or models.active()
+        self.model = self.spec.name
         try:
             self.dim = len(self(["probe"])[0])
         except urllib.error.HTTPError as e:
             if e.code != 404:
                 raise
-            ollama("/api/pull", {"model": model, "stream": False})  # first run: fetch the ~45MB model
+            ollama("/api/pull", {"model": self.model, "stream": False})  # first run, or a new model
             self.dim = len(self(["probe"])[0])
 
     def __call__(self, texts: list[str], query: bool = False) -> list[list[float]]:
-        texts = [QUERY_PREFIX + t for t in texts] if query else texts
+        prefix = self.spec.query if query else self.spec.doc
+        texts = [prefix + t for t in texts]
         return [v for i in range(0, len(texts), 256)
                 for v in ollama("/api/embed", {"model": self.model, "input": texts[i:i + 256], "keep_alive": -1})["embeddings"]]
 
@@ -94,7 +95,10 @@ class Store:
         # ponytail: one global lock. one user's agents never come close to needing more.
         self.lock = threading.Lock()
         self.path = root / "vectors.qenlo"
+        self.marker = root / "vectors.model"  # which model made the vectors
         self.search_backend = "none yet"
+        if self.path.exists() and self.marker.exists() and self.marker.read_text().strip() != self.embed.model:
+            shutil.rmtree(self.path)  # another model's vectors. sqlite has the text, re-embed below
         self.vectors = self._open()
         live = self.db.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         # a crash between the sqlite commit and the qenlo add leaves the two out of step. rebuild from sqlite.
@@ -104,7 +108,7 @@ class Store:
         self.vectors.flush()  # qenlo >= 0.1.0a11 folds the WAL into a snapshot here
         self._profile()
 
-    def _open(self) -> Collection:
+    def _open_collection(self) -> Collection:
         make = Collection.open if self.path.exists() else Collection.create
         try:
             return make(self.path, self.embed.dim, backend=self.backend)
@@ -128,6 +132,11 @@ class Store:
         tmp.rename(self.path)
         shutil.rmtree(old, ignore_errors=True)
         return self._open()
+
+    def _open(self) -> Collection:
+        vectors = self._open_collection()
+        self.marker.write_text(self.embed.model)
+        return vectors
 
     def _compact(self) -> None:
         """every qenlo write is one WAL file that open replays. fold them into a snapshot now and then."""
@@ -245,12 +254,18 @@ class Store:
 
     def stats(self) -> dict:
         count = lambda col: dict(self.db.execute(f"SELECT {col}, COUNT(*) FROM memories GROUP BY {col}").fetchall())
+        since = lambda ms: self.db.execute("SELECT COUNT(*) FROM memories WHERE created >= ?", (int(time.time() * 1000) - ms,)).fetchone()[0]
+        last = self.db.execute("SELECT agent, kind, created FROM memories ORDER BY id DESC LIMIT 1").fetchone()
         s = self.vectors.stats()
         return {
             "memories": s.live_rows,
             "by_agent": count("agent"),
             "by_kind": count("kind"),
-            "model": MODEL,
+            "last_hour": since(3_600_000),
+            "last_day": since(86_400_000),
+            "last": dict(last) if last else None,
+            "model": self.embed.model,
+            "dim": self.embed.dim,
             "embed_device": self.embed.device,
             "qenlo_backend": self.backend,
             "last_search_ran_on": self.search_backend,

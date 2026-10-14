@@ -93,3 +93,24 @@ def welcome(s: dict) -> str:
     pad = max(len(c) for c, _ in TIPS)
     tips = [f"  {paint('qenlo-memory', DIM)} {c:<{pad}}  {paint(d, DIM)}" for c, d in TIPS]
     return "\n".join([head, "", " Try:", *tips])
+
+
+def models_table() -> str:
+    """the model library, with the active one marked and the ones ollama already has."""
+    from . import models
+    from .store import ollama
+
+    try:
+        pulled = {m["name"].removesuffix(":latest") for m in ollama("/api/tags")["models"]}
+    except RuntimeError:
+        pulled = set()
+    current = models.active().name
+    pad = max(map(len, models.LIBRARY))
+    rows = [f" {paint('embedding models', BOLD)}  {paint('all run in ollama · qenlo-memory models use <name>', DIM)}", ""]
+    for m in models.LIBRARY.values():
+        mark = paint("●", RED) if m.name == current else paint("✓", GREEN) if m.name in pulled else " "
+        rows.append(f"  {mark} {m.name:<{pad}}  {str(m.dim) + 'd':>5}  {m.size:>7}  {paint(m.note, DIM)}")
+    if current not in models.LIBRARY:
+        rows.append(f"  {paint('●', RED)} {current:<{pad}}  {paint('custom ollama tag', DIM)}")
+    rows += ["", f"  {paint('●', RED)} in use   {paint('✓', GREEN)} already pulled"]
+    return "\n".join(rows)
