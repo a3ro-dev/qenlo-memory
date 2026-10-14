@@ -325,7 +325,9 @@ def main(argv: list[str] | None = None) -> None:
         else:
             if a.action:
                 models.save(pet=a.action == "on")
-            if a.action != "off":
+            if a.action == "off":
+                pet.stop()
+            else:
                 pet.spawn()
             print({"on": "pet on, it starts with the daemon", "off": "pet off, it won't start with the daemon"}.get(a.action, "pet started"))
     elif a.cmd == "install":
