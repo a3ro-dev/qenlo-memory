@@ -4,11 +4,9 @@ i use claude code, codex, cursor, antigravity and gemini cli. each one starts ev
 
 qenlo-memory is one local memory that all of them share. it's a CLI your agents run from their shell, one brain folder they all link to, and hooks. an MCP server is still there for agents without a shell. every agent can read everything, and every memory records which agent wrote it, so `recall` might hand claude code a fix that codex found yesterday, labeled `by codex`.
 
-it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0a11`). building a real product on it was also a way to find out where it hurts.
+it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0b1`, the first beta). building a real product on it was also a way to find out where it hurts.
 
 ## install
-
-you need [ollama](https://ollama.com) running. it does the embeddings, on your GPU if you have one.
 
 mac and linux:
 
@@ -22,7 +20,7 @@ windows (powershell):
 irm https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.ps1 | iex
 ```
 
-the script installs [uv](https://docs.astral.sh/uv/) if you don't have it, installs the `qenlo-memory` CLI with it (the only dependencies are `qenlo` and `mcp`), pulls the embedding model into ollama, and runs `qenlo-memory install`. that last step writes the brain folder, `~/.qenlo-memory/brain/`, then finds every coding agent on the machine and links the skill and the always-on instruction into it, lets the agent run `qenlo-memory` without asking where it can, and adds hooks where the agent supports them. `install --mcp` also wires the MCP server into every agent. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries. `qenlo-memory install --dry-run` shows what it would touch without writing anything.
+the script installs [uv](https://docs.astral.sh/uv/) if you don't have it, installs the `qenlo-memory` CLI with it (the only dependencies are `qenlo` and `mcp`), and runs `qenlo-memory install`. that installs [ollama](https://ollama.com) if it's missing (winget or the official installer on windows, brew or the app on a mac, the official script on linux), starts it if it's stopped, and pulls the embedding model with a progress bar. ollama does the embeddings, on your GPU if you have one. that last step writes the brain folder, `~/.qenlo-memory/brain/`, then finds every coding agent on the machine and links the skill and the always-on instruction into it, lets the agent run `qenlo-memory` without asking where it can, and adds hooks where the agent supports them. `install --mcp` also wires the MCP server into every agent. it backs up each file it edits to `<file>.bak` once, and running it again only replaces its own entries. `qenlo-memory install --dry-run` shows what it would touch without writing anything.
 
 qenlo publishes wheels for windows x64, linux x86_64 and apple silicon macs. intel macs and linux arm aren't covered yet.
 
@@ -90,11 +88,31 @@ each kind is stored in qenlo's `user_id` field. qenlo can only filter on `user_i
 
 ### the model
 
-`snowflake-arctic-embed:22m` through ollama, pulled automatically on first start. it has 22M parameters and 384 dimensions, it's Apache-2.0, and it takes 39MB of VRAM on my rtx 4050. its model card reports 50.15 NDCG@10 on MTEB retrieval, which is a lot for something that small. set `QENLO_MEMORY_MODEL` to any ollama embedding model. if it isn't an arctic model, also set `QENLO_MEMORY_QUERY_PREFIX=""`. a model with a different dimension needs a fresh `~/.qenlo-memory/vectors.qenlo`.
+the default is `snowflake-arctic-embed:22m` through ollama. it has 22M parameters and 384 dimensions, it's Apache-2.0, and it takes 39MB of VRAM on my rtx 4050. its model card reports 50.15 NDCG@10 on MTEB retrieval, which is a lot for something that small.
+
+`qenlo-memory models` lists the library: twelve ollama embedding models from 46 MB to 1.2 GB (arctic v1 and v2, nomic, mxbai, bge-m3, embeddinggemma, qwen3-embedding, granite, minilm), with their dimension, size, and the query and document prefixes each one was trained with. `qenlo-memory models use nomic-embed-text` pulls the model, makes it the default, and restarts the daemon, which re-embeds every memory from sqlite into a fresh collection, because two models' vectors don't share a space. any other ollama tag works too, without prefixes. `QENLO_MEMORY_MODEL` still overrides the choice for one shell.
 
 i started with torch and sentence-transformers in the daemon. that meant a 2GB CUDA download to run a 22M-parameter model, while ollama was already sitting on the GPU. so embeddings go through ollama's local http api, and this package has no ML dependencies at all.
 
 on the GPU: ollama runs the embeddings there when it can. qenlo's collection opens in `automatic` mode, which searches on the GPU through wgpu once more than 4,096 memories match a query and uses the CPU below that. qenlo made that call because moving a small matrix to the GPU costs more than searching it. `qenlo-memory stats` shows where both actually ran.
+
+## the pet
+
+qenlo has a mascot now: a dot-matrix creature, drawn in the same dots as the qenlo wordmark, that sits in the corner of your desktop while the daemon runs. it eats when any agent saves a memory and says who fed it, sweats when the GPU is busy, and falls asleep when the daemon stops. double-click it for its vitals:
+
+```
+● qenlo-memory                 22:30
+daemon    up · 127.0.0.1
+gpu       RTX 4050 laptop · 12%
+vram      1.9/6.0 GB · 52°C
+memories  312 · 6 agents
+ingest    +4/h · +31/day
+model     snowflake-arctic-embed · 384d · gpu
+search    cpu · wal 12
+last      codex · procedural · 3m ago
+```
+
+the daemon starts it, and drag moves it (it remembers where). `qenlo-memory pet off` stops it from coming back, `pet on` brings it back, `pet stop` sends it away for now. it's plain tkinter, so no new dependencies, and it only watches: it never starts the daemon itself. GPU numbers come from `nvidia-smi`, so other GPUs show the rest of the vitals without that line.
 
 ## numbers
 
@@ -116,6 +134,8 @@ qenlo-memory recent -n 10 --agent codex
 qenlo-memory remember "the user's laptop has an rtx 4050" --kind semantic
 qenlo-memory forget 12
 qenlo-memory stats
+qenlo-memory models
+qenlo-memory pet
 qenlo-memory stop
 ```
 
@@ -123,11 +143,12 @@ run plain `qenlo-memory` for a welcome screen. in a terminal, memories come out 
 
 ## what building it on qenlo taught me
 
-qenlo is alpha, and this project ran into three of its edges. two are design choices, one was a bug.
+qenlo was alpha when this started, and this project ran into three of its edges. two are design choices, one was a bug.
 
 - records hold only an id, a `user_id`, a timestamp and a vector. there's no payload, so the text and provenance live in sqlite next to the collection and the ids line up.
 - deleted ids can never be reused. sqlite's `AUTOINCREMENT` has the same rule, so the two agree for free.
 - every write is its own WAL file, and `open` replays them. in alpha.10, `flush()` was supposed to fold them into a snapshot but returned early after every commit, so the WAL only ever grew. building this is how i found it, and [alpha.11](https://github.com/a3ro-dev/qenlo/releases/tag/sdk-v0.1.0-alpha.11) fixes it. qenlo-memory calls `flush()` at startup and every 256 writes. it still rebuilds the collection from sqlite if the two ever disagree, for example after a crash between the two commits.
+- an agent's memory is mostly "write one thing, then search": `remember`, then `recall` a moment later. up to alpha.11, every write threw away qenlo's search matrix, so the next search copied the whole collection first. [beta.1](https://github.com/a3ro-dev/qenlo/releases/tag/sdk-v0.1.0-beta.1) keeps every vector once in the buffer search reads, which made add-then-search 13x faster at 2,000 rows and cut memory per row by 40%.
 
 ## limits
 

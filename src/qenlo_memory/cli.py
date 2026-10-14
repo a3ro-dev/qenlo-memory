@@ -49,6 +49,10 @@ def serve() -> None:
     server.store = Store(HOME)
     server.key = key
     print(f"qenlo-memory listening on {URL}, home {HOME}", flush=True)
+    from . import models, pet
+
+    if models.config().get("pet", True):  # the pet lives as long as you want it to, starting with the daemon
+        pet.spawn()
     server.serve_forever()
 
 
@@ -266,6 +270,11 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("forget").add_argument("id", type=int)
     sub.add_parser("stats")
     sub.add_parser("stop", help="stop the daemon")
+    m = sub.add_parser("models", help="embedding models; `models use <name>` switches and re-embeds")
+    m.add_argument("action", nargs="?", choices=["use"])
+    m.add_argument("name", nargs="?")
+    sub.add_parser("pet", help="the desktop pet: pet [on|off|stop]").add_argument(
+        "action", nargs="?", choices=["on", "off", "stop"], help="on/off: start with the daemon or not")
     i = sub.add_parser("install", help="link the brain, rules, skill and hooks into every agent found")
     i.add_argument("--dry-run", action="store_true")
     i.add_argument("--mcp", action="store_true", help="also wire the MCP server (needs qenlo-memory[mcp])")
@@ -306,10 +315,44 @@ def main(argv: list[str] | None = None) -> None:
         print(look.stats(s) if look.COLOR else json.dumps(s, indent=2))
     elif a.cmd == "stop":
         stop()
+    elif a.cmd == "models":
+        use_model(a.name) if a.action == "use" else print(look.models_table())
+    elif a.cmd == "pet":
+        from . import models, pet
+
+        if a.action == "stop":
+            print("pet stopped" if pet.stop() else "pet isn't running")
+        else:
+            if a.action:
+                models.save(pet=a.action == "on")
+            if a.action != "off":
+                pet.spawn()
+            print({"on": "pet on, it starts with the daemon", "off": "pet off, it won't start with the daemon"}.get(a.action, "pet started"))
     elif a.cmd == "install":
         from .install import install
 
         install(dry_run=a.dry_run, mcp=a.mcp)
+
+
+def use_model(name: str | None) -> None:
+    """pull the model, make it the default, restart the daemon. the daemon re-embeds everything on start."""
+    from . import look, models
+    from .install import ensure_ollama, pull
+
+    if not name:
+        raise SystemExit("usage: qenlo-memory models use <name>   (see: qenlo-memory models)")
+    if os.environ.get("QENLO_MEMORY_MODEL"):
+        raise SystemExit("QENLO_MEMORY_MODEL is set in your environment and wins over this. unset it first.")
+    if name not in models.LIBRARY:
+        print(look.done(f"{name} isn't in the library", "using it as a plain ollama tag, with no query prefix"))
+    ensure_ollama()
+    pull(name)
+    models.save(model=name)
+    if alive():
+        stop()
+    started = time.time()
+    s = call("stats")  # starts the daemon, which sees the new model and rebuilds the vectors from sqlite
+    print(look.done(f"now on {name}", f"{s['memories']} memories re-embedded at {s['dim']}d in {time.time() - started:.0f}s"))
 
 
 def stop() -> None:
