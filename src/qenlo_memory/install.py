@@ -14,6 +14,8 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 from .cli import HOME
@@ -348,19 +350,93 @@ def agents(cmd, mcp: bool):
     ]
 
 
-def preflight() -> tuple[bool, str]:
-    """is ollama up, and is the embedding model there (pulled if not)."""
-    from .store import MODEL, OLLAMA, ollama
+def ollama_exe() -> str | None:
+    """ollama on PATH, or where its installers put it (a fresh install isn't on this process's PATH yet)."""
+    local = Path(os.environ.get("LOCALAPPDATA", H / "AppData" / "Local"))
+    places = [local / "Programs" / "Ollama" / "ollama.exe", Path("/Applications/Ollama.app/Contents/Resources/ollama"),
+              Path("/usr/local/bin/ollama"), Path("/opt/homebrew/bin/ollama")]
+    return shutil.which("ollama") or next((str(p) for p in places if p.exists()), None)
+
+
+def install_ollama() -> None:
+    """the official installer for this OS, from ollama.com. the user ran our installer to get exactly this."""
+    import tempfile
+
+    print(f"  {paint('…', DIM)} installing ollama, it runs the embedding model")
+    if sys.platform == "win32":
+        if shutil.which("winget"):
+            subprocess.run(["winget", "install", "--id", "Ollama.Ollama", "-e", "--silent", "--disable-interactivity",
+                            "--accept-package-agreements", "--accept-source-agreements"], capture_output=True, creationflags=NO_WINDOW)
+        if not ollama_exe():
+            setup = Path(tempfile.gettempdir()) / "OllamaSetup.exe"
+            urllib.request.urlretrieve("https://ollama.com/download/OllamaSetup.exe", setup)
+            subprocess.run([str(setup), "/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES"], check=True)
+    elif sys.platform == "darwin":
+        if shutil.which("brew"):
+            subprocess.run(["brew", "install", "ollama"], check=True)
+        else:
+            archive = Path(tempfile.gettempdir()) / "Ollama-darwin.zip"
+            urllib.request.urlretrieve("https://ollama.com/download/Ollama-darwin.zip", archive)
+            subprocess.run(["ditto", "-xk", str(archive), "/Applications"], check=True)
+    else:  # the linux script asks for sudo itself
+        subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
+
+
+def ensure_ollama() -> str:
+    """ollama answering on OLLAMA_HOST: installed if missing, started if stopped. returns its version."""
+    from .store import ollama
 
     try:
-        version = ollama("/api/version")["version"]
+        return ollama("/api/version")["version"]
     except RuntimeError:
-        how = {"win32": "winget install Ollama.Ollama", "darwin": "brew install ollama, or the app from ollama.com"}
-        return False, f"ollama isn't running at {OLLAMA}. install it ({how.get(sys.platform, 'curl -fsSL https://ollama.com/install.sh | sh')}), start it, run this again"
-    if not any(m["name"] == MODEL for m in ollama("/api/tags")["models"]):
-        print(f"  {paint('…', DIM)} pulling {MODEL}")
-        ollama("/api/pull", {"model": MODEL, "stream": False})
-    return True, f"ollama {version} · {MODEL}"
+        pass
+    exe = ollama_exe()
+    if not exe:
+        install_ollama()
+        exe = ollama_exe()
+    if not exe:
+        raise RuntimeError("ollama didn't install. get it from https://ollama.com and run this again")
+    windows = sys.platform == "win32"
+    subprocess.Popen([exe, "serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     creationflags=NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
+                     start_new_session=not windows, close_fds=True)
+    for _ in range(100):  # a fresh install may still be starting its own copy, either one answering is fine
+        try:
+            return ollama("/api/version")["version"]
+        except RuntimeError:
+            time.sleep(0.3)
+    raise RuntimeError("ollama is installed but didn't start. start it and run this again")
+
+
+def pull(model: str) -> None:
+    """pull with a one-line progress bar. ollama skips layers it already has."""
+    from .store import OLLAMA
+
+    request = urllib.request.Request(OLLAMA + "/api/pull", json.dumps({"model": model}).encode(), {"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=3600) as stream:
+        for raw in stream:
+            event = json.loads(raw)
+            if "error" in event:
+                raise RuntimeError(f"ollama couldn't pull {model}: {event['error']}")
+            if event.get("total"):
+                share = event.get("completed", 0) / event["total"]
+                print(f"\r  {paint('…', DIM)} pulling {model} {paint('█' * round(20 * share), RED)}{paint('░' * (20 - round(20 * share)), DIM)} {share:>4.0%}", end="", flush=True)
+    print("\r" + " " * 70 + "\r", end="")
+
+
+def preflight() -> tuple[bool, str]:
+    """ollama up (installed and started if needed), and the embedding model pulled."""
+    from . import models
+    from .store import ollama
+
+    try:
+        version = ensure_ollama()
+        model = models.active().name
+        if not any(m["name"] in (model, model + ":latest") for m in ollama("/api/tags")["models"]):
+            pull(model)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
+        return False, str(e)
+    return True, f"ollama {version} · {model}"
 
 
 def install(dry_run: bool = False, mcp: bool = False) -> None:
@@ -395,7 +471,12 @@ def install(dry_run: bool = False, mcp: bool = False) -> None:
     if ready:
         from .cli import call
 
+        from . import models, pet
+
         s = call("stats")
         say("ok", "daemon", f"127.0.0.1 · embeddings on {s['embed_device']} · {s['memories']} memories")
+        if models.config().get("pet", True):
+            pet.spawn()  # the daemon starts it too; a second copy just leaves
+            say("ok", "pet", "on your desktop. drag it, double-click for vitals, `qenlo-memory pet off` to retire it")
     print(f"\n  {paint(f'{wired} agents wired.', BOLD)} restart them, then ask any of them what it remembers.")
     print(f"  {paint('try', DIM)}  qenlo-memory remember \"i prefer small diffs\" --kind long_term\n")
