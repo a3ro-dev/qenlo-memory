@@ -22,6 +22,7 @@ from .cli import NO_WINDOW, PORT, URL, token
 PET_PORT = PORT + 1  # one pet per user: the second one can't bind this and leaves
 RED, GLOW, INK, MOUTH, CARD, DIM, TEXT, GREEN = "#B53C2F", "#E07A6A", "#161212", "#3A0D0A", "#141414", "#7A7F7C", "#E9E4DF", "#6A994E"
 KEY = "#010203"  # painted transparent on windows and macos
+PANEL = "#1E0B09"  # the dark behind the dots: it makes the gaps solid, so the whole creature can be grabbed
 PITCH, DOT = 9, 7
 W = 290
 
@@ -128,12 +129,14 @@ class Pet:
         elif sys.platform == "darwin":
             root.attributes("-transparent", True)
         self.font = ("Consolas", 9) if sys.platform == "win32" else ("Menlo", 10) if sys.platform == "darwin" else ("DejaVu Sans Mono", 9)
-        self.canvas = tk.Canvas(root, width=W, height=320, bg=KEY, highlightthickness=0)
+        self.canvas = tk.Canvas(root, width=W, height=320, bg=KEY, highlightthickness=0, cursor="fleur")
         self.canvas.pack()
         self.stats, self.card, self.mood_until, self.mood, self.bubble = None, None, 0.0, "", ""
         self.show_card = models.config().get("pet_card", True)
         self.seen = None
         x, y = models.config().get("pet_at") or (root.winfo_screenwidth() - W - 24, root.winfo_screenheight() - 380)
+        # a saved spot from a bigger or unplugged monitor would leave it off screen
+        x, y = min(max(0, x), root.winfo_screenwidth() - W), min(max(0, y), root.winfo_screenheight() - 120)
         root.geometry(f"+{x}+{y}")
         self.menu = tk.Menu(root, tearoff=0)
         self.menu.add_command(label="show / hide vitals", command=self.toggle)
@@ -196,7 +199,13 @@ class Pet:
         speed = 9 if mood == "busy" else 3
         bob = 0 if mood == "sleep" else round(3 * math.sin(t * speed / 3))
         left, top = (W - 12 * PITCH) // 2, 34 + bob
-        for r, row in enumerate(frame(mood, int(t * (4 if mood == "busy" else 2)))):
+        sprite = frame(mood, int(t * (4 if mood == "busy" else 2)))
+        for r, row in enumerate(sprite):
+            for col, cell in enumerate(row):
+                if cell != ".":
+                    x, y = left + col * PITCH - 1, top + r * PITCH - 1
+                    c.create_rectangle(x, y, x + PITCH, y + PITCH, fill=PANEL, outline="")
+        for r, row in enumerate(sprite):
             for col, cell in enumerate(row):
                 if cell == ".":
                     continue
