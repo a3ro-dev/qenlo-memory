@@ -152,11 +152,15 @@ class Pet:
 
     def listen(self, guard: socket.socket) -> None:
         """`qenlo-memory pet stop` connects here."""
+        self.guard = guard  # held for life: if it's freed, the next start makes a second pet
         while True:
-            connection, _ = guard.accept()
-            with connection:
-                if connection.recv(16) == b"quit":
-                    self.root.after(0, self.root.destroy)
+            try:
+                connection, _ = guard.accept()
+                with connection:
+                    if connection.recv(16) == b"quit":
+                        self.root.after(0, self.root.destroy)
+            except OSError:
+                continue  # a reset probe must not kill the thread that keeps the port
 
     def watch(self) -> None:
         while True:
