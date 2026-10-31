@@ -49,10 +49,6 @@ def serve() -> None:
     server.store = Store(HOME)
     server.key = key
     print(f"qenlo-memory listening on {URL}, home {HOME}", flush=True)
-    from . import models, pet
-
-    if models.config().get("pet", True):  # the pet lives as long as you want it to, starting with the daemon
-        pet.spawn()
     server.serve_forever()
 
 
@@ -308,8 +304,6 @@ def main(argv: list[str] | None = None) -> None:
     m = sub.add_parser("models", help="embedding models; `models use <name>` switches and re-embeds")
     m.add_argument("action", nargs="?", choices=["use"])
     m.add_argument("name", nargs="?")
-    sub.add_parser("pet", help="the desktop pet: pet [on|off|stop]").add_argument(
-        "action", nargs="?", choices=["on", "off", "stop"], help="on/off: start with the daemon or not")
     i = sub.add_parser("install", help="link the brain, rules, skill and hooks into every agent found")
     i.add_argument("--dry-run", action="store_true")
     i.add_argument("--mcp", action="store_true", help="also wire the MCP server (needs qenlo-memory[mcp])")
@@ -370,19 +364,6 @@ def main(argv: list[str] | None = None) -> None:
         stop()
     elif a.cmd == "models":
         use_model(a.name) if a.action == "use" else print(look.models_table())
-    elif a.cmd == "pet":
-        from . import models, pet
-
-        if a.action == "stop":
-            print("pet stopped" if pet.stop() else "pet isn't running")
-        else:
-            if a.action:
-                models.save(pet=a.action == "on")
-            if a.action == "off":
-                pet.stop()
-            else:
-                pet.spawn()
-            print({"on": "pet on, it starts with the daemon", "off": "pet off, it won't start with the daemon"}.get(a.action, "pet started"))
     elif a.cmd == "install":
         from .install import install
 

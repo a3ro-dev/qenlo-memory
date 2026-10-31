@@ -140,24 +140,6 @@ i started with torch and sentence-transformers in the daemon. that meant a 2GB C
 
 on the GPU: ollama runs the embeddings there when it can. qenlo's collection opens in `automatic` mode, which searches on the GPU through wgpu once more than 4,096 memories match a query and uses the CPU below that. qenlo made that call because moving a small matrix to the GPU costs more than searching it. `qenlo-memory stats` shows where both actually ran.
 
-## the pet
-
-qenlo has a mascot now: a dot-matrix creature, drawn in the same dots as the qenlo wordmark, that sits in the corner of your desktop while the daemon runs. it eats when any agent saves a memory and says who fed it, sweats when the GPU is busy, and falls asleep when the daemon stops. double-click it for its vitals:
-
-```
-● qenlo-memory                 22:30
-daemon    up · 127.0.0.1
-gpu       RTX 4050 laptop · 12%
-vram      1.9/6.0 GB · 52°C
-memories  312 · 6 agents
-ingest    +4/h · +31/day
-model     snowflake-arctic-embed · 384d · gpu
-search    cpu · wal 12
-last      codex · procedural · 3m ago
-```
-
-the daemon starts it, and drag moves it (it remembers where). `qenlo-memory pet off` stops it from coming back, `pet on` brings it back, `pet stop` sends it away for now. it's plain tkinter, so no new dependencies, and it only watches: it never starts the daemon itself. GPU numbers come from `nvidia-smi`, so other GPUs show the rest of the vitals without that line.
-
 ## numbers
 
 measured on my laptop (rtx 4050, ollama 0.34.4) with 1,000 memories from four agents:
@@ -182,7 +164,6 @@ qenlo-memory forget 12
 qenlo-memory export > memories.jsonl
 qenlo-memory stats
 qenlo-memory models
-qenlo-memory pet
 qenlo-memory stop
 ```
 

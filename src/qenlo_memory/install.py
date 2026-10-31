@@ -505,12 +505,7 @@ def install(dry_run: bool = False, mcp: bool = False) -> None:
     if ready:
         from .cli import call
 
-        from . import models, pet
-
         s = call("stats")
         say("ok", "daemon", f"127.0.0.1 · embeddings on {s['embed_device']} · {s['memories']} memories")
-        if models.config().get("pet", True):
-            pet.spawn()  # the daemon starts it too; a second copy just leaves
-            say("ok", "pet", "on your desktop. drag it, double-click for vitals, `qenlo-memory pet off` to retire it")
     print(f"\n  {paint(f'{wired} agents wired.', BOLD)} restart them, then ask any of them what it remembers.")
     print(f"  {paint('try', DIM)}  qenlo-memory remember \"i prefer small diffs\" --kind long_term\n")
