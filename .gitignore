@@ -6,3 +6,4 @@ dist/
 research/data/raw/
 research/data/embcache.sqlite
 research/data/*.log
+research/data/embcache.sqlite-journal

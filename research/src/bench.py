@@ -12,6 +12,7 @@ import sqlite3
 import statistics
 import sys
 import time
+import urllib.error
 from array import array
 from pathlib import Path
 
@@ -50,9 +51,25 @@ class Cache:
             have.update(self.db.execute(f"SELECT k, v FROM e WHERE k IN ({','.join('?' * len(chunk))})", chunk).fetchall())
         missing = list({k: t for k, t in zip(keys, texts) if k not in have}.items())
         prefix = self.spec.query if query else self.spec.doc
+        def one(texts):
+            return ollama("/api/embed", {"model": self.spec.name, "input": [prefix + t for t in texts], "keep_alive": -1})["embeddings"]
+
+        def safe(texts):
+            try:
+                return one(texts)
+            except urllib.error.HTTPError:  # ollama 400s a whole batch when one text tokenizes past the context
+                if len(texts) > 1:
+                    return [v for t in texts for v in safe([t])]
+                for cut in (2000, 1000, 400):
+                    try:
+                        return one([texts[0][:cut]])
+                    except urllib.error.HTTPError:
+                        pass
+                raise
+
         for i in range(0, len(missing), 128):
             part = missing[i:i + 128]
-            vecs = ollama("/api/embed", {"model": self.spec.name, "input": [prefix + t for _, t in part], "keep_alive": -1, "truncate": True})["embeddings"]
+            vecs = safe([t for _, t in part])
             rows = [(k, array("f", v).tobytes()) for (k, _), v in zip(part, vecs)]
             self.db.executemany("INSERT OR REPLACE INTO e VALUES (?, ?)", rows)
             have.update(rows)

@@ -1,11 +1,13 @@
 project: qenlo-memory v0.3 — LLM-free memory that stays right
 question: which LLM-free read/write changes make the right memory come back and stale ones stop coming back, at CLI latency?
 metric: memscore = mean(locomo-obs R@5, locomo-turns R@5, lme-s recall_all@5)
-embedder: snowflake-arctic-embed:22m (ollama), qenlo exact search
-status: inner-loop
+embedder: snowflake-arctic-embed:22m (ollama, gpu), qenlo 0.1.0b2 exact search
+status: concluded-for-0.3 (shipped); open questions in findings.md
+baseline: {memscore: 59.8}
+shipped: {memscore: 68.1, recipe: "0.5*minmax(dense) + 0.5*bm25/max*min(1,max) + 0.25*minmax(dense in time window)"}
 hypotheses:
-  H1-hybrid: {status: running}
-  H2-fusion-form: {status: queued}
-  H3-time-window: {status: queued}
-  H4-recency: {status: queued}
-  H5-supersession: {status: queued}
+  H1-hybrid: {status: supported, delta: "+5.2 (rrf) to +8.1 (interp)"}
+  H2-fusion-form: {status: supported-partly, note: "interp 0.5 beats rrf on locomo, -1 on lme; dense-weighted lost"}
+  H3-time-window: {status: supported-on-subset, note: "+6.1/+3.9 R@5 on locomo time queries, 0 on lme"}
+  H4-recency: {status: refuted, note: "-1 to -4 on locomo"}
+  H5-supersession: {status: supported, note: "stale@1 60% -> 0%, related flag 100%"}
