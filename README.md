@@ -1,10 +1,10 @@
 # qenlo-memory
 
-i use claude code, codex, cursor, antigravity and gemini cli. each one starts every session knowing nothing, and none of them knows what the others figured out an hour ago. so the same release steps, the same preferences and the same "no, we tried that" get explained again, once per agent.
+i use claude code, codex, cursor, antigravity, gemini cli and copilot. each one starts every session knowing nothing, and none of them knows what the others figured out an hour ago. so the same release steps, the same preferences and the same "no, we tried that" get explained again, once per agent.
 
 qenlo-memory is one local memory that all of them share. it's a CLI your agents run from their shell, one brain folder they all link to, and hooks. an MCP server is still there for agents without a shell. every agent can read everything, and every memory records which agent wrote it, so `recall` might hand claude code a fix that codex found yesterday, labeled `by codex`.
 
-it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0b1`, the first beta). building a real product on it was also a way to find out where it hurts.
+it runs on [qenlo](https://github.com/a3ro-dev/qenlo), the embedded vector database i'm building, through its python sdk (`qenlo==0.1.0b2`). building a real product on it was also a way to find out where it hurts.
 
 ## install
 
@@ -43,8 +43,14 @@ then restart your agents. run the same line again to upgrade. the upgrade rewrit
 | antigravity (app, ide, `agy`) | `~/.gemini/config/skills` | `~/.gemini/config/rules/qenlo-memory.md` (link) | no |
 | gemini cli | `~/.agents/skills` | `~/.gemini/GEMINI.md` | SessionStart, BeforeAgent |
 | opencode | `~/.agents/skills` | `~/.config/opencode/AGENTS.md` | no |
-| kiro, qwen, qoder, windsurf | where supported | where supported | no |
-| vs code, claude desktop | MCP only, with `install --mcp` | | |
+| copilot cli | `~/.copilot/skills` | `~/.copilot/copilot-instructions.md` | no |
+| amp | `~/.agents/skills` | `~/.config/amp/AGENTS.md` | no |
+| factory droid | `~/.factory/skills` | `~/.factory/AGENTS.md` | no |
+| auggie | `~/.augment/skills` | `~/.augment/rules/qenlo-memory.md` (link) | no |
+| goose | `~/.config/goose/skills` | `~/.config/goose/.goosehints` | no |
+| roo code, continue, cline | `~/.agents/skills` where read | `~/.roo/rules`, `~/.continue/rules`, `~/Documents/Cline/Rules` (links) | no |
+| kiro, qwen, qoder, windsurf, crush, kilo, junie, trae | where supported | where supported | no |
+| vs code, zed, claude desktop | MCP only, with `install --mcp` | | |
 
 files that are only ours are links into the brain. files you write in too (`AGENTS.md`, `GEMINI.md`...) get a short marked block that points at the brain instead, because a link would take the whole file. directories are symlinks, or junctions on windows, which need no admin. file links need developer mode on windows; without it you get a copy that the next install refreshes.
 
@@ -74,6 +80,40 @@ hooks ────────────>          v
 the daemon exists because of how qenlo works. it takes an exclusive process lock on a collection. if every agent launched its own server against the same store, the first one would win and the rest would get `collection is already open by another handle or process`. so there's exactly one owner. everything else is a thin client that starts the daemon if it isn't already running.
 
 attribution comes from the shell. agents set environment variables for the commands they run: `AI_AGENT` is becoming the shared one (claude code sets `claude-code_<version>_agent`), and there are per-harness ones like `CLAUDECODE` and `GEMINI_CLI`. when none match, the memory is written `by cli` and the instruction asks the agent to pass `--agent`. over MCP, the name comes from the handshake instead: every client sends its own name (`codex-mcp-client`, `cursor-vscode`, ...), and the server maps that to a short label.
+
+### recall: meaning, words, and time
+
+0.2 searched by meaning alone. a 22M-parameter embedding model is small enough to run anywhere, and small enough to blur exactly what agents remember: names, ports, versions, paths. so 0.3 searches three ways and adds the scores:
+
+- **meaning**: the query's embedding against every current memory, exact search in qenlo.
+- **words**: bm25 over sqlite's FTS5 index, which ships with python. scaled by its best hit, and trusted only as far as that hit is real evidence, because in a store of a few memories every word is common and bm25 is noise.
+- **time**: if the query names one ("yesterday", "last week", "in september", "3 days ago"), a second dense search restricted to that window. qenlo filters timestamps natively, so this costs one more exact search.
+
+`0.5 · meaning + 0.5 · words + 0.25 · time`, each normalised per query. the recipe came out of a [closed-loop study](research/findings.md) of about sixty memory papers, measured on LoCoMo and LongMemEval with the default model:
+
+| | LoCoMo facts R@5 | LoCoMo turns R@5 | LongMemEval-S recall@5 |
+| --- | ---: | ---: | ---: |
+| 0.2, meaning only | 51.3 | 45.1 | 83.1 |
+| 0.3 | **58.7** | **57.6** | **87.7** |
+
+on the LoCoMo questions that name a time, the time channel alone adds 6 points. a recency bonus, the obvious other idea, made things worse.
+
+### when a fact changes
+
+an old port or a reversed decision that keeps coming back is worse than no memory. in a test with 20 facts that change and 200 distractors, plain append-only memory put the stale value on top 60% of the time.
+
+so `remember` now shows the memories its new fact is probably about (cosine ≥ 0.82, tuned on my real memories), and `--replaces <id>` links them: the old one leaves search, and `history <id>` still shows it as "replaced by #new". with that, the new value was on top 20 out of 20 times, and the related list caught every old version. the store doesn't guess what counts as an update. the agent calling it is the LLM that can tell, so the store gives it the candidates and keeps the chain (the same invalidate-don't-delete idea as zep, engram and tepa).
+
+```bash
+qenlo-memory remember "the daemon listens on 7438" --kind semantic
+#   remembered #52
+#   related memories. if #52 updates one of them, run the same remember again with --replaces <id> ...
+#   #12 semantic | by codex | ... | the daemon listens on 7437
+qenlo-memory remember "the daemon listens on 7438" --kind semantic --replaces 12
+qenlo-memory history 12
+```
+
+`qenlo-memory export` writes everything as json lines, replaced versions included, and `qenlo-memory import <file>` reads that back, or a mem0 export.
 
 ### four kinds of memory
 
@@ -132,7 +172,10 @@ almost all of a recall is the embedding call to ollama. the vector search is exa
 qenlo-memory recall "how do we release qenlo"
 qenlo-memory recent -n 10 --agent codex
 qenlo-memory remember "the user's laptop has an rtx 4050" --kind semantic
+qenlo-memory remember "staging moved to port 6543" --replaces 31
+qenlo-memory history 31
 qenlo-memory forget 12
+qenlo-memory export > memories.jsonl
 qenlo-memory stats
 qenlo-memory models
 qenlo-memory pet
@@ -156,7 +199,7 @@ qenlo was alpha when this started, and this project ran into three of its edges.
 - the antigravity app and the antigravity ide send the same client name. `agy` is told apart by its parent process. the other two both show up as `antigravity`.
 - memories written from a shell whose harness sets none of the known variables show up as `by cli` unless the agent passes `--agent`.
 - secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.
-- there's no consolidation or decay yet. i'll add them when plain similarity plus recency stops being enough.
+- there's no consolidation, reranker or llm in the loop. updates are linked by the agent, not detected by the store; the store only points at the likely candidates.
 
 ## license
 
