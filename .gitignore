@@ -3,3 +3,6 @@ __pycache__/
 *.egg-info/
 dist/
 .pytest_cache/
+research/data/raw/
+research/data/embcache.sqlite
+research/data/*.log

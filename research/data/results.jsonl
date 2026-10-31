@@ -1,0 +1,1 @@
+{"ranker": "dense", "tag": "smoke", "model": "snowflake-arctic-embed:22m", "limit": 1, "memscore": 47.72, "locomo-obs": {"main": 47.72, "second": 53.26, "n": 197, "p50_ms": 0.09, "cats": {"c1": 28.1, "c2": 86.5, "c3": 36.4, "c4": 51.4, "c5": 27.7}}, "at": "2026-10-31 15:51"}
