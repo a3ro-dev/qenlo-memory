@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>qenlo-memory vs mem0</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=Martian+Mono:wght@300;400&display=block" rel="stylesheet">
+<style>
+  :root { --field:#0e2a20; --mint:#7cf0b4; --dim:#2f5a48; --paper:#e9f3ee; --soft:#a9c4b7; }
+  html,body { margin:0; }
+  body { width:1600px; height:900px; overflow:hidden; position:relative; background:var(--field); color:var(--paper); font-family:"Martian Mono", monospace; }
+  h1 { position:absolute; left:72px; top:58px; margin:0; font-family:Syne, sans-serif; font-weight:800; font-size:58px; line-height:1; letter-spacing:-.01em; }
+  h1 span { color:var(--mint); }
+  h1 code { font-family:"Martian Mono", monospace; font-weight:400; font-size:52px; letter-spacing:-.04em; }
+  .note { position:absolute; left:72px; top:132px; margin:0; font-size:15px; font-weight:300; color:var(--soft); }
+  .rows { position:absolute; left:72px; right:72px; top:236px; }
+  .row { display:grid; grid-template-columns:260px 1fr 150px; align-items:center; column-gap:24px; margin-bottom:58px; }
+  .label { font-family:Syne, sans-serif; font-weight:600; font-size:24px; line-height:1.1; }
+  .label small { display:block; font-family:"Martian Mono", monospace; font-weight:300; font-size:13px; color:var(--soft); margin-top:6px; }
+  .bars svg { display:block; }
+  .vals { font-size:17px; line-height:34px; text-align:right; font-variant-numeric:tabular-nums; }
+  .vals b { color:var(--mint); font-weight:400; }
+  .vals i { font-style:normal; color:var(--soft); }
+  .key { position:absolute; left:72px; bottom:58px; margin:0; font-size:14px; color:var(--soft); }
+  .key b { color:var(--mint); font-weight:400; }
+  .honest { position:absolute; right:72px; bottom:58px; margin:0; font-size:14px; color:var(--soft); text-align:right; }
+</style>
+</head>
+<body>
+<h1><span>qenlo-memory</span> vs <code>mem0</code></h1>
+<p class="note">same 22m embedder in the same ollama · 2,541 LoCoMo facts · 1,982 questions · mem0 2.2.1, llm-free, bm25 extras on</p>
+<div class="rows" id="rows"></div>
+<p class="key"><b>●</b> qenlo-memory &nbsp;&nbsp; <span style="color:#5f8f7a">●</span> mem0</p>
+<p class="honest">writes are slower: 59 ms vs 50, each save checks for a fact it replaces</p>
+<script>
+const rows = [
+  { label: "recall@5", sub: "higher · 1 dot = 1 point", q: 58.1, m: 54.3, unit: 1, fmt: v => v.toFixed(1) },
+  { label: "search p50", sub: "lower · 1 dot = 1 ms", q: 34, m: 50, unit: 1, fmt: v => v + " ms" },
+  { label: "peak RAM", sub: "lower · 1 dot = 3 MB", q: 47, m: 154, unit: 3, fmt: v => v + " MB" },
+  { label: "installed", sub: "lower · 1 dot = 20 MB", q: 52, m: 1024, unit: 20, fmt: v => v >= 1000 ? "1.0 GB" : v + " MB" },
+];
+const pitch = 17, r = 6.4, width = 1600 - 144 - 260 - 150 - 48;
+document.getElementById("rows").innerHTML = rows.map(row => {
+  const line = (v, fill, y) => {
+    const n = v / row.unit, whole = Math.floor(n), part = n - whole;
+    let s = "";
+    for (let i = 0; i < whole; i++) s += `<circle cx="${r + i * pitch}" cy="${y}" r="${r}" fill="${fill}"/>`;
+    if (part > 0.05) s += `<circle cx="${r + whole * pitch}" cy="${y}" r="${(r * Math.sqrt(part)).toFixed(2)}" fill="${fill}"/>`;
+    return s;
+  };
+  return `<div class="row"><div class="label">${row.label}<small>${row.sub}</small></div>
+    <div class="bars"><svg width="${width}" height="66" aria-hidden="true">${line(row.q, "var(--mint)", 16)}${line(row.m, "#5f8f7a", 50)}</svg></div>
+    <div class="vals"><b>${row.fmt(row.q)}</b><br><i>${row.fmt(row.m)}</i></div></div>`;
+}).join("");
+</script>
+</body>
+</html>

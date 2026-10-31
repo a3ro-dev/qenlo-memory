@@ -1,5 +1,7 @@
 # qenlo-memory
 
+![one memory, every agent: agent names in ascii streaming into one shaded sphere](docs/img/one-memory.png)
+
 i use claude code, codex, cursor, antigravity, gemini cli and copilot. each one starts every session knowing nothing, and none of them knows what the others figured out an hour ago. so the same release steps, the same preferences and the same "no, we tried that" get explained again, once per agent.
 
 qenlo-memory is one local memory that all of them share. it's a CLI your agents run from their shell, one brain folder they all link to, and hooks. an MCP server is still there for agents without a shell. every agent can read everything, and every memory records which agent wrote it, so `recall` might hand claude code a fix that codex found yesterday, labeled `by codex`.
@@ -83,6 +85,8 @@ attribution comes from the shell. agents set environment variables for the comma
 
 ### recall: meaning, words, and time
 
+![recall adds three scores: meaning, exact words, and time](docs/img/recall.png)
+
 0.2 searched by meaning alone. a 22M-parameter embedding model is small enough to run anywhere, and small enough to blur exactly what agents remember: names, ports, versions, paths. so 0.3 searches three ways and adds the scores:
 
 - **meaning**: the query's embedding against every current memory, exact search in qenlo.
@@ -99,6 +103,8 @@ attribution comes from the shell. agents set environment variables for the comma
 on the LoCoMo questions that name a time, the time channel alone adds 6 points. a recency bonus, the obvious other idea, made things worse.
 
 ### when a fact changes
+
+![port 5432 struck through and replaced by port 6543; the old fact stays in history](docs/img/replaced.png)
 
 an old port or a reversed decision that keeps coming back is worse than no memory. in a test with 20 facts that change and 200 distractors, plain append-only memory put the stale value on top 60% of the time.
 
@@ -155,6 +161,8 @@ measured on my laptop (rtx 4050, ollama 0.34.4) on a copy of my own store, 243 r
 most of a recall is the embedding call to ollama. the vector search is exact, not approximate, and at this size it's a rounding error. these are in-process numbers, and the MCP hop from an agent adds a local http request on top.
 
 ### against mem0
+
+![dot-matrix comparison with mem0: recall@5, search latency, peak RAM and install size](docs/img/vs-mem0.png)
 
 same embedding model in the same ollama, the same 2,541 LoCoMo facts and 1,982 questions, each system's own add and search code, mem0 2.2.1 on its llm-free path (`infer=False`, local qdrant). `research/src/vs_mem0.py` runs both.
 

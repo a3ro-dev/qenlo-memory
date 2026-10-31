@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>replaced, not deleted</title>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;800;900&family=Martian+Mono:wght@300;400&display=block" rel="stylesheet">
+<style>
+  :root { --ground:#eef1f4; --ink:#10141a; --grey:#8b939e; --red:#e5261a; }
+  html,body { margin:0; }
+  body { width:1600px; height:900px; overflow:hidden; position:relative; background:var(--ground); color:var(--ink); font-family:"Big Shoulders Display", sans-serif; }
+  .old, .new { position:absolute; margin:0; font-weight:900; font-size:280px; line-height:.8; letter-spacing:-.01em; white-space:nowrap; text-transform:uppercase; }
+  .old { left:60px; top:70px; color:#6c747f; }
+  .strike { position:absolute; left:0; top:164px; width:1215px; height:46px; background:var(--red); }
+  .new { left:60px; top:330px; }
+  .id { position:absolute; font-family:"Martian Mono", monospace; font-size:15px; line-height:1.7; }
+  .id.o { left:1250px; top:100px; color:#4a515b; }
+  .id.n { left:1250px; top:360px; }
+  .id em { font-style:normal; color:#b8160b; }
+  .cmd { position:absolute; left:72px; top:690px; margin:0; font-family:"Martian Mono", monospace; font-size:17px; font-weight:300; }
+  .cmd b { font-weight:400; color:#b8160b; }
+  .say { position:absolute; left:72px; bottom:62px; margin:0; font-size:46px; font-weight:800; line-height:1; text-transform:uppercase; }
+  .say span { color:var(--red); }
+  .stat { position:absolute; right:72px; bottom:62px; margin:0; text-align:right; font-family:"Martian Mono", monospace; font-size:15px; line-height:1.6; color:#3b424c; }
+  .stat b { display:block; font-family:"Big Shoulders Display", sans-serif; font-size:84px; line-height:.9; font-weight:900; color:var(--ink); }
+</style>
+</head>
+<body>
+<p class="old">port 5432</p>
+<div class="strike" aria-hidden="true"></div>
+<p class="id o">#12 · by codex · sep 14<br><em>replaced by #52</em><br>still in history</p>
+<p class="new">port 6543</p>
+<p class="id n">#52 · by claude-code · oct 31<br>[staging.db.port]</p>
+<p class="cmd">$ qenlo-memory remember "staging db moved to 6543" <b>--key staging.db.port</b></p>
+<p class="say">replaced, <span>not deleted.</span></p>
+<p class="stat"><b>60% → 0%</b>old value on top, after a fact changed</p>
+</body>
+</html>

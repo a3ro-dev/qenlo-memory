@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>one memory, every agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wdth,wght@75..112.5,300..700&display=block" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; --ground:#0d0b08; --ink:#f3e6cf; --dim:#6b5a43; --amber:#ffb03b; }
+  html,body { margin:0; background:var(--ground); }
+  body { width:1600px; height:900px; overflow:hidden; position:relative; font-family:"Martian Mono", ui-monospace, monospace; color:var(--ink); }
+  pre { position:absolute; inset:0; margin:0; font-size:11px; line-height:13px; letter-spacing:0; color:var(--dim); white-space:pre; }
+  pre b { color:var(--amber); font-weight:400; }
+  pre i { color:var(--ink); font-style:normal; }
+  .copy { position:absolute; left:72px; bottom:64px; width:640px; }
+  h1 { margin:0 0 22px; font-weight:600; font-size:64px; line-height:1.02; letter-spacing:-0.02em; font-variation-settings:"wdth" 100; }
+  h1 span { color:var(--amber); }
+  p { margin:0; font-size:17px; line-height:1.55; color:#cbb999; font-weight:300; }
+  .tag { position:absolute; left:72px; top:64px; font-size:15px; color:var(--ink); letter-spacing:.02em; }
+  .tag em { font-style:normal; color:var(--amber); }
+</style>
+</head>
+<body>
+<pre id="art" aria-hidden="true"></pre>
+<div class="tag">qenlo-memory <em>0.3</em></div>
+<div class="copy">
+  <h1>one memory.<br><span>every agent.</span></h1>
+  <p>claude code, codex, cursor, gemini, copilot and 20 more write to one local store. what one learns, the next one recalls.</p>
+</div>
+<script>
+document.fonts.load('11px "Martian Mono"').then(() => {
+// deterministic ascii scene: agent names stream along curves into a shaded sphere
+const art = document.getElementById("art");
+art.textContent = "M".repeat(200);
+const probe = document.createRange(); probe.selectNodeContents(art);
+const cw = probe.getBoundingClientRect().width / 200, W = Math.floor(1600 / cw), H = Math.floor(900 / 13);
+const grid = Array.from({length:H}, () => Array(W).fill(" "));
+const cls = Array.from({length:H}, () => Array(W).fill(0)); // 0 dim, 1 amber, 2 ink
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+// sphere, lit from the upper left
+const asp = 13 / cw, R = H * 0.34, cx = W - R * asp - 14, cy = H * 0.47;
+const ramp = " .:-=+*#%@";
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const dx = (x - cx) / asp, dy = y - cy, d = Math.hypot(dx, dy);
+  if (d < R) {
+    const nz = Math.sqrt(R * R - d * d) / R, nx = dx / R, ny = dy / R;
+    const l = Math.max(0, nx * -0.5 + ny * -0.5 + nz * 0.71);
+    const v = Math.max(1, Math.min(ramp.length - 1, Math.floor(l * (ramp.length - 0.01) + (rnd() - 0.5) * 0.8)));
+    grid[y][x] = ramp[v]; cls[y][x] = v > 6 ? 1 : v > 3 ? 2 : 0;
+  }
+}
+// one stream per agent, from the left edge into the sphere, above the copy block
+const agents = ["claude-code","codex","cursor","antigravity","gemini-cli","opencode","kiro","qwen-code","windsurf","qoder","copilot-cli","amp","droid","auggie","goose","crush","cline","roo-code","kilo-code","continue","junie","trae","zed","vs-code","claude-desktop"];
+const first = 10, last = Math.floor(H * 0.64);
+agents.forEach((name, i) => {
+  const sy = first + (i / (agents.length - 1)) * (last - first);
+  const ty = cy + (i / (agents.length - 1) - 0.5) * R * 0.9;
+  const text = name + " · ";
+  const end = cx - R * asp * 0.8;
+  let k = 0;
+  for (let x = 2; x < end; x++) {
+    const t = x / end;
+    const y = Math.round(sy + (ty - sy) * (t * t * (3 - 2 * t)));
+    if (grid[y][x] !== " ") continue;
+    grid[y][x] = text[k++ % text.length];
+    cls[y][x] = t > 0.85 ? 1 : k <= name.length ? 2 : 0;
+  }
+});
+const esc = c => c === "<" ? "&lt;" : c === "&" ? "&amp;" : c;
+document.getElementById("art").innerHTML = grid.map((row, y) => row.map((c, x) =>
+  cls[y][x] === 1 ? `<b>${esc(c)}</b>` : cls[y][x] === 2 ? `<i>${esc(c)}</i>` : esc(c)).join("")).join("\n");
+});
+</script>
+</body>
+</html>
