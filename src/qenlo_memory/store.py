@@ -312,7 +312,7 @@ class Store:
             if key and not replaces:
                 slot = self.db.execute("SELECT id FROM memories WHERE key = ? AND project = ? AND superseded_by IS NULL",
                                        (key, project)).fetchone()
-                replaces = slot and slot["id"]
+                replaces = slot and (not same or slot["id"] != same["id"]) and slot["id"]  # same text, same key: a duplicate
             old = self._rows([int(replaces)]).get(int(replaces)) if replaces else None
             if replaces and (not old or old["superseded_by"] or (same and same["id"] == old["id"])):
                 raise KeyError(f"no current memory #{replaces} to replace")
