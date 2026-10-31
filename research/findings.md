@@ -54,11 +54,22 @@ the update test (20 facts that change, 200 distractors, the real Store):
 - don't run `uv sync` while a process holds qenlo's dll on windows: the venv ends up half-upgraded.
 - the time parser must not fire on "how many weeks ago did i..." (asks for a duration, names no time).
 
-## open questions
+## decided against
 
-- a cross-encoder reranker (Cognis, APS-RAG) would likely add more, but costs a second model in ollama. ollama has
-  no rerank endpoint yet.
-- write-time key expansion (LongMemEval's fact-augmented keys) needs an LLM per write; qwen3.5:2b is on this
-  machine, but a 2-3 s write is too slow for an agent's shell call. a background job could do it.
+- no generative model and no cross-encoder reranker in the memory process. both would buy recall points at the cost
+  of the thing that makes this usable: a few-ms, tens-of-MB memory with one small embedding model.
+- instead, the structuring an LLM would do at write time is done by the agent writing the memory, which already is
+  one: `--key` (slot-key supersession, the part of Fortunate Recall / TEPA that carried most of their gain) and
+  `--replaces`. with keys alone the update suite went 60% stale -> 0% stale.
+
+## real store (the user's 243 memories, read-only copy)
+
+- migration from 0.2: schema columns added and fts index built from sqlite in 0.5 s, no re-embedding.
+- 10 natural questions about the user's projects: old dense recall already had the right #1 on 9; 0.3 fixed the
+  10th and cleaned up slot 3 on a few. at this size, ranking is not the pain; stale duplicates are.
+- `review` found 31 groups of same-subject memories, e.g. a release called "not merged to prod" and later
+  "deployed to prod". that is the append-only failure H5 measured, sitting in a real store.
+
+## open questions
 - LongMemEval multi-session (84%) and temporal (80%) are the weakest categories; both want aggregation across
   sessions, which is a reading problem more than a retrieval one.
