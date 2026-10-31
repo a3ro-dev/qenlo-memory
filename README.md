@@ -142,15 +142,29 @@ on the GPU: ollama runs the embeddings there when it can. qenlo searches on the 
 
 ## numbers
 
-measured on my laptop (rtx 4050, ollama 0.34.4) with 1,000 memories from four agents:
+measured on my laptop (rtx 4050, ollama 0.34.4) on a copy of my own store, 243 real memories written by my agents (`research/src/footprint.py`):
 
 | | p50 | p95 |
 | --- | --- | --- |
-| `recall`, end to end (embed the query, qenlo search, sqlite join) | 11.7 ms | 18.7 ms |
-| qenlo exact search alone | 0.18 ms | |
-| `remember`, including the durable WAL write | 23 ms (mean) | |
+| `recall`, end to end (embed the query, dense + keyword + time search, sqlite join) | 37 ms | 51 ms |
+| `remember` (embed, sqlite, qenlo WAL, related-memory check) | 43 ms | 57 ms |
+| process RAM with the store open | 43 MB | (python alone: 35 MB) |
+| disk | 0.9 MB | |
+| installed | 52 MB | |
 
-almost all of a recall is the embedding call to ollama. the vector search is exact, not approximate, and at this size it's a rounding error. these are in-process numbers, and the MCP hop from an agent adds a local http request on top.
+most of a recall is the embedding call to ollama. the vector search is exact, not approximate, and at this size it's a rounding error. these are in-process numbers, and the MCP hop from an agent adds a local http request on top.
+
+### against mem0
+
+same embedding model in the same ollama, the same 2,541 LoCoMo facts and 1,982 questions, each system's own add and search code, mem0 2.2.1 on its llm-free path (`infer=False`, local qdrant). `research/src/vs_mem0.py` runs both.
+
+| | recall@5 | search p50 / p95 | add (mean) | peak RAM | installed |
+| --- | --- | --- | --- | --- | --- |
+| mem0 | 46.6 | 48 / 56 ms | 34 ms | 122 MB | |
+| mem0 with `[extras]` (its bm25) | 54.3 | 50 / 60 ms | 50 ms | 154 MB | 1.0 GB |
+| qenlo-memory | 58.1 | 34 / 53 ms | 59 ms | 47 MB | 52 MB |
+
+qenlo-memory writes are slower because every save looks for a memory it might replace. mem0, zep and supermemory publish 67-97% on these benchmarks, but those are answer accuracy graded by an llm, with an llm and a server in the loop, so they don't compare to the recall numbers here.
 
 ## use it yourself
 
