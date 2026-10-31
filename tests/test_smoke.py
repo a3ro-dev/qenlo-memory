@@ -145,3 +145,15 @@ def test_time_window():
     assert time_window("what did i decide yesterday", now)[1] == now
     for none in ("how do i release qenlo", "the season may change", "how many weeks ago did i start"):
         assert time_window(none, now) is None, none
+
+
+def test_key_replaces(tmp_path, embed):
+    """the writing agent names the slot; the store needs no similarity guess to retire the old value."""
+    s = Store(tmp_path, embed)
+    a = s.remember("staging db listens on 5432", key="Staging.DB.Port", project="api")
+    other = s.remember("staging db listens on 5432", "procedural", key="staging.db.port", project="web")
+    b = s.remember("staging db moved to 6543", key="staging.db.port", project="api")
+    assert b["replaced"] == a["id"] and b["key"] == "staging.db.port"
+    assert {m["id"] for m in s.recent()} == {b["id"], other["id"]}  # same key, other project: a different fact
+    assert "[staging.db.port]" in __import__("qenlo_memory.store").store.line(s.recall("staging.db.port", k=1)[0])
+    s.close()

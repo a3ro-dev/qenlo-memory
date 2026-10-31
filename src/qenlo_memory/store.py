@@ -50,7 +50,8 @@ def line(m: dict) -> str:
     day = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["created"] / 1000))
     score = f" | {m['score']:.2f}" if "score" in m else ""
     gone = f" | replaced by #{m['superseded_by']}" if m.get("superseded_by") else ""
-    return f"#{m['id']} {m['kind']} | by {m['agent']} | {day} | {m['project'] or '-'}{score}{gone} | {m['text']}"
+    key = f"[{m['key']}] " if m.get("key") else ""
+    return f"#{m['id']} {m['kind']} | by {m['agent']} | {day} | {m['project'] or '-'}{score}{gone} | {key}{m['text']}"
 
 
 WORD = re.compile(r"\w[\w.\-/]*\w|\w")
@@ -163,9 +164,10 @@ class Store:
             " text TEXT NOT NULL, agent TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL)"
         )
         have = {r["name"] for r in self.db.execute("PRAGMA table_info(memories)")}
-        for col in ("superseded_by", "superseded_at"):  # 0.3: which memory replaced this one, and when
+        # 0.3: which memory replaced this one and when, and the slot key the writing agent gave it
+        for col, typ in (("superseded_by", "INTEGER"), ("superseded_at", "INTEGER"), ("key", "TEXT")):
             if col not in have:
-                self.db.execute(f"ALTER TABLE memories ADD COLUMN {col} INTEGER")
+                self.db.execute(f"ALTER TABLE memories ADD COLUMN {col} {typ}")
         self.db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS words USING fts5(text, tokenize='porter unicode61')")
         # ponytail: one global lock. one user's agents never come close to needing more.
         self.lock = threading.Lock()
@@ -182,7 +184,7 @@ class Store:
             self.vectors = self._rebuild()
         if self.db.execute("SELECT COUNT(*) FROM words").fetchone()[0] != live:  # new in 0.3, or out of step
             self.db.execute("DELETE FROM words")
-            self.db.execute("INSERT INTO words(rowid, text) SELECT id, text FROM memories WHERE superseded_by IS NULL")
+            self.db.execute("INSERT INTO words(rowid, text) SELECT id, text || ' ' || coalesce(key, '') FROM memories WHERE superseded_by IS NULL")
         self.vectors.flush()  # qenlo >= 0.1.0a11 folds the WAL into a snapshot here
         self._profile()
 
@@ -259,13 +261,14 @@ class Store:
         return [{**rows[i], "score": round(s, 3)} for i, s in near if i in rows]
 
     def _insert(self, rows: list[tuple], vectors: list, retire: int | None = None) -> list[int]:
-        """rows of (kind, text, agent, project, created): one sqlite transaction, one qenlo batch.
+        """rows of (kind, text, agent, project, created, key): one sqlite transaction, one qenlo batch.
         retire: a memory the (single) new row supersedes, in the same transaction."""
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            ids = [self.db.execute("INSERT INTO memories(kind, text, agent, project, created) VALUES (?, ?, ?, ?, ?)", r).lastrowid
+            ids = [self.db.execute("INSERT INTO memories(kind, text, agent, project, created, key) VALUES (?, ?, ?, ?, ?, ?)", r).lastrowid
                    for r in rows]
-            self.db.executemany("INSERT INTO words(rowid, text) VALUES (?, ?)", [(i, r[1]) for i, r in zip(ids, rows)])
+            # the key is indexed with the text: "staging.db.port" is exactly the kind of word bm25 is for
+            self.db.executemany("INSERT INTO words(rowid, text) VALUES (?, ?)", [(i, f"{r[1]} {r[5] or ''}") for i, r in zip(ids, rows)])
             self.vectors.add_batch([Record(i, KINDS[r[0]], r[4], v) for i, r, v in zip(ids, rows, vectors)])
             if retire:
                 self._retire(retire, ids[0], rows[0][4])
@@ -295,15 +298,21 @@ class Store:
         return text
 
     def remember(self, text: str, kind: str = "semantic", agent: str = "unknown", project: str = "",
-                 replaces: int | None = None) -> dict:
-        """replaces: the id of a memory this one updates. the old one leaves search but stays in `history`."""
-        text = self._check(text, kind)
+                 replaces: int | None = None, key: str = "") -> dict:
+        """replaces: the id of a memory this one updates. the old one leaves search but stays in `history`.
+        key: a stable name for what the fact is about ("staging.db.port"), chosen by the writing agent. a new
+        memory with the key of a current one in the same project replaces it, with no similarity guess."""
+        text, key = self._check(text, kind), " ".join(key.lower().split())
         vector = self.embed([text])[0]
         with self.lock:
             # only the exact same text is a duplicate. "port 3000" vs "port 3001" embed almost identically,
             # and a similarity cutoff would silently keep the stale one. related memories are shown instead.
             same = self.db.execute("SELECT * FROM memories WHERE kind = ? AND lower(text) = lower(?) AND superseded_by IS NULL",
                                    (kind, text)).fetchone()
+            if key and not replaces:
+                slot = self.db.execute("SELECT id FROM memories WHERE key = ? AND project = ? AND superseded_by IS NULL",
+                                       (key, project)).fetchone()
+                replaces = slot and slot["id"]
             old = self._rows([int(replaces)]).get(int(replaces)) if replaces else None
             if replaces and (not old or old["superseded_by"] or (same and same["id"] == old["id"])):
                 raise KeyError(f"no current memory #{replaces} to replace")
@@ -314,12 +323,12 @@ class Store:
                     if old["kind"] == "long_term":
                         self._profile()
                 return {**dict(same), "duplicate": True, "replaced": old["id"] if old else None, "related": []}
-            mid = self._insert([(kind, text, agent or "unknown", project, now)], [vector], old and old["id"])[0]
+            mid = self._insert([(kind, text, agent or "unknown", project, now, key or None)], [vector], old and old["id"])[0]
             self._compact()
             if kind == "long_term" or (old and old["kind"] == "long_term"):
                 self._profile()
         related = [] if old else self._related(vector, mid)
-        return {"id": mid, "kind": kind, "text": text, "agent": agent, "project": project, "created": now,
+        return {"id": mid, "kind": kind, "text": text, "agent": agent, "project": project, "created": now, "key": key or None,
                 "replaced": old["id"] if old else None, "related": related}
 
     def remember_many(self, items: list[dict], agent: str = "import") -> dict:
@@ -331,7 +340,8 @@ class Store:
             text = self._check(str(it.get("text") or it.get("memory") or ""), kind)  # "memory" is mem0's export field
             if (kind, text.lower()) not in seen:
                 seen.add((kind, text.lower()))
-                rows.append((kind, text, it.get("agent") or agent, it.get("project") or "", int(it.get("created") or now)))
+                rows.append((kind, text, it.get("agent") or agent, it.get("project") or "", int(it.get("created") or now),
+                             " ".join(str(it.get("key") or "").lower().split()) or None))
         vectors = self.embed([r[1] for r in rows]) if rows else []
         with self.lock:
             ids = self._insert(rows, vectors) if rows else []

@@ -81,15 +81,16 @@ def updates():
         ["refactored the parser", "the logo is red", "lunch at noon", "docs moved to the wiki", "the laptop has 16GB",
          "ci takes 6 minutes", "the pet sleeps at night", "rust toolchain is pinned", "qenlo uses avx2"], k=200))]
     out = {}
-    for mode in ("append-only", "supersede"):
+    for mode in ("append-only", "supersede", "key"):
         with tempfile.TemporaryDirectory() as tmp:
             s = Store(Path(tmp), embed)
-            old = {i: s.remember(tpl.format(a), "semantic", "codex")["id"] for i, (_, tpl, a, _) in enumerate(SLOTS)}
+            key = lambda i: f"slot.{i}" if mode == "key" else ""
+            old = {i: s.remember(tpl.format(a), "semantic", "codex", key=key(i))["id"] for i, (_, tpl, a, _) in enumerate(SLOTS)}
             s.remember_many([{"text": t} for t in distract])
             caught = 0
             for i, (_, tpl, _, b) in enumerate(SLOTS):
-                r = s.remember(tpl.format(b), "semantic", "claude-code")
-                caught += old[i] in [m["id"] for m in r["related"]]
+                r = s.remember(tpl.format(b), "semantic", "claude-code", key=key(i))
+                caught += old[i] in [m["id"] for m in r["related"]] or r.get("replaced") == old[i]
                 if mode == "supersede":
                     s.remember(tpl.format(b), "semantic", "claude-code", replaces=old[i])  # what the skill tells agents to do
             top = [s.recall(q, k=1)[0]["text"] for q, *_ in SLOTS]

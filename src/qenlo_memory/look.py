@@ -41,7 +41,7 @@ def memory(m: dict) -> str:
     gone = f"replaced by #{m['superseded_by']}" if m.get("superseded_by") else ""
     meta = " · ".join(filter(None, [m["kind"].replace("_", " "), m["agent"], m["project"], day, score, gone]))
     head = f"{paint('●', KIND.get(m['kind'], DIM))} {paint('#' + str(m['id']), BOLD)}  {paint(meta, DIM)}"
-    body = textwrap.wrap(" ".join(m["text"].split()), width() - 7) or [""]
+    body = textwrap.wrap((f"[{m['key']}] " if m.get("key") else "") + " ".join(m["text"].split()), width() - 7) or [""]
     shown = [f"  {paint('⎿', DIM)}  {body[0]}", *(f"     {s}" for s in body[1:MAX_LINES])]
     if len(body) > MAX_LINES:
         shown.append("     " + paint(f"… +{len(body) - MAX_LINES} lines", DIM))

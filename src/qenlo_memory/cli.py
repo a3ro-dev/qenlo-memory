@@ -198,7 +198,7 @@ def mcp_server(agent: str) -> None:
         return name
 
     @app.tool()
-    def remember(text: str, ctx: Context, kind: str = "semantic", project: str = "", replaces: int = 0) -> str:
+    def remember(text: str, ctx: Context, kind: str = "semantic", project: str = "", replaces: int = 0, key: str = "") -> str:
         """Save one memory to the user's shared memory (every coding agent they use reads it).
         kind: episodic = something that happened (a decision, a fix, a session outcome),
         semantic = a fact (about the user, a project, a tool), procedural = how to do something
@@ -206,8 +206,10 @@ def mcp_server(agent: str) -> None:
         every session should start with. project = repo/folder name, '' if it applies everywhere.
         One self-contained fact per call. Never store secrets. replaces = the id of a memory this one
         updates (a changed value, a reversed decision): the old one leaves search and stays in history.
+        key = a short stable name for what the fact is about, like 'staging.db.port' or 'release.steps':
+        saving a new memory with the same key (in the same project) replaces the old one automatically.
         The reply lists related memories; if the new one updates one of them, call again with replaces."""
-        r = call("remember", text=text, kind=kind, agent=who(ctx), project=project or here, replaces=replaces or None)
+        r = call("remember", text=text, kind=kind, agent=who(ctx), project=project or here, replaces=replaces or None, key=key)
         return saved(r)
 
     @app.tool()
@@ -277,6 +279,7 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--project", default="")
     r.add_argument("--agent", default=shell_agent())
     r.add_argument("--replaces", type=int, default=None, help="id of the memory this one updates")
+    r.add_argument("--key", default="", help="stable name for what this is about (staging.db.port); same key replaces")
     q = sub.add_parser("recall")
     q.add_argument("query")
     q.add_argument("-k", type=int, default=8)
@@ -320,7 +323,7 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as e:  # a memory hiccup must never block the user's prompt
             print(f"qenlo-memory hook skipped: {e}", file=sys.stderr)
     elif a.cmd == "remember":
-        r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project, replaces=a.replaces)
+        r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project, replaces=a.replaces, key=a.key)
         if not look.COLOR:
             print(saved(r))
         else:
