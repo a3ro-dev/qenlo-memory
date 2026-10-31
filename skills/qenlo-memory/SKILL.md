@@ -16,6 +16,7 @@ run these in your shell. they talk to a small local daemon that starts itself.
 | `qenlo-memory recall "<query>" [--kind K] [--agent A] [--project P] [-k 8]` | search by meaning and by exact words (names, versions, paths). time words like "last week" or "in september" narrow it to that time. leave filters off to search every agent's memories |
 | `qenlo-memory remember "<text>" --kind K [--project P] [--replaces ID]` | save one self-contained memory. it prints related memories that may now be stale. your agent name is detected from your shell; pass `--agent <harness>` if it comes out as `cli` |
 | `qenlo-memory history <id>` | every version of a memory: what it replaced and what replaced it |
+| `qenlo-memory review [--project P]` | groups of memories that look like the same fact written twice. link the stale ones with `--replaces` |
 | `qenlo-memory recent [-n 20] [--kind K] [--agent A] [--project P]` | newest first. good for "what was i doing" and catching up after another agent |
 | `qenlo-memory forget <id>` | delete a memory that is wrong or stale. it's gone for good |
 
@@ -61,6 +62,8 @@ stale memories are worse than none: an old port or a reversed decision keeps com
 
 - `remember` prints related memories after it saves. read them. if your new memory updates one (same subject, new value), run the same `remember` again with `--replaces <that id>`. it links them without saving twice.
 - if you already know the old id, pass `--replaces <id>` the first time.
+- for facts that will change (ports, versions, current status, who owns what), pass `--key <subject.attribute>`, like `--key staging.db.port`. the next memory with the same key in the same project replaces it, no id needed. reuse keys you see in recall results (`[staging.db.port] ...`).
+- when the user asks you to tidy memory, run `qenlo-memory review` and link what's stale.
 - the old memory leaves recall and recent, and `history <id>` still shows it with "replaced by #new". use `forget` only for memories that were never true.
 
 ## never

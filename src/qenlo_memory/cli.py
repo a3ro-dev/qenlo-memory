@@ -15,7 +15,7 @@ from pathlib import Path
 HOME = Path(os.environ.get("QENLO_MEMORY_HOME", Path.home() / ".qenlo-memory"))
 PORT = int(os.environ.get("QENLO_MEMORY_PORT", "7437"))
 URL = f"http://127.0.0.1:{PORT}"
-OPS = {"remember", "remember_many", "recall", "recent", "history", "forget", "export", "stats", "context"}
+OPS = {"remember", "remember_many", "recall", "recent", "history", "review", "forget", "export", "stats", "context"}
 # a hidden console instead of none: children of a console-less process get a fresh, visible window.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -231,6 +231,12 @@ def mcp_server(agent: str) -> None:
         return show(call("history", id=id))
 
     @app.tool()
+    def review(project: str = "") -> str:
+        """Groups of current memories that are probably about the same thing, oldest first. For each group,
+        if a later memory updates an earlier one, remember the later text again with replaces=<earlier id>."""
+        return "\n\n".join(show(g) for g in call("review", project=project)) or "nothing looks duplicated."
+
+    @app.tool()
     def forget(id: int) -> str:
         """Delete memory #id for good (text and vector). Use when a memory is wrong or stale."""
         r = call("forget", id=id)
@@ -291,6 +297,8 @@ def main(argv: list[str] | None = None) -> None:
         s.add_argument("--project", default="")
     sub.add_parser("forget").add_argument("id", type=int)
     sub.add_parser("history", help="every version of a memory").add_argument("id", type=int)
+    rv = sub.add_parser("review", help="groups of memories that are probably about the same thing")
+    rv.add_argument("--project", default="")
     sub.add_parser("export", help="every memory as json lines, superseded ones too")
     im = sub.add_parser("import", help="add memories from json lines (ours, or mem0's export): text/memory, kind, project")
     im.add_argument("file")
@@ -338,6 +346,11 @@ def main(argv: list[str] | None = None) -> None:
         print(rows(call("recent", n=a.n, kind=a.kind, agent=a.agent, project=a.project)))
     elif a.cmd == "history":
         print(rows(call("history", id=a.id)))
+    elif a.cmd == "review":
+        groups = call("review", project=a.project)
+        tip = 'if a later one updates an earlier one: qenlo-memory remember "<later text>" --replaces <earlier id>'
+        print("\n\n".join(f"group {n} (oldest first). {tip}\n{rows(g)}" for n, g in enumerate(groups, 1))
+              or "nothing looks duplicated.")
     elif a.cmd == "export":
         for m in call("export"):
             print(json.dumps(m, ensure_ascii=False))

@@ -405,6 +405,25 @@ class Store:
                 self._profile()
         return row
 
+    def review(self, project: str = "", limit: int = 20) -> list[list[dict]]:
+        """groups of current memories that are probably about the same thing, oldest first in each group.
+        what a store written before --replaces and --key existed is full of. the agent decides which are updates."""
+        rows = self.recent(500, project=project)
+        if not rows:
+            return []
+        by_id = {r["id"]: r for r in rows}
+        vectors = self.embed([r["text"] for r in rows])
+        taken, found = set(), []
+        # newest first, each memory with its own close neighbours. no chaining: a~b and b~c doesn't make a~c
+        for r, v in zip(rows, vectors):
+            if r["id"] in taken:
+                continue
+            near = [j for j, s in self._dense(v, "", 6) if j != r["id"] and j in by_id and j not in taken and s >= RELATED]
+            if near:
+                taken.update([r["id"], *near])
+                found.append(sorted([r, *(by_id[j] for j in near)], key=lambda m: m["id"]))
+        return found[:max(1, min(int(limit), 100))]
+
     def export(self) -> list[dict]:
         """everything, superseded versions included, oldest first. `import` reads it back."""
         return [dict(r) for r in self.db.execute("SELECT * FROM memories ORDER BY id")]

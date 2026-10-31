@@ -157,3 +157,14 @@ def test_key_replaces(tmp_path, embed):
     assert {m["id"] for m in s.recent()} == {b["id"], other["id"]}  # same key, other project: a different fact
     assert "[staging.db.port]" in __import__("qenlo_memory.store").store.line(s.recall("staging.db.port", k=1)[0])
     s.close()
+
+
+def test_review(tmp_path, embed):
+    s = Store(tmp_path, embed)
+    a = s.remember("motherboard v1.0.0 is on branch release/v1.0.0, not merged to prod yet")
+    b = s.remember("motherboard v1.0.0 is deployed to prod")
+    s.remember("the user prefers lower-case prose", "long_term")
+    assert [[m["id"] for m in g] for g in s.review()] == [[a["id"], b["id"]]]
+    s.remember("motherboard v1.0.0 is deployed to prod", replaces=a["id"])
+    assert s.review() == []
+    s.close()

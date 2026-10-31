@@ -113,6 +113,10 @@ qenlo-memory remember "the daemon listens on 7438" --kind semantic --replaces 12
 qenlo-memory history 12
 ```
 
+for facts that are made to change, the agent can name the slot instead: `--key staging.db.port`. the next memory with that key in the same project replaces the old one, with no id and no similarity guess. the agent writing the memory is already an LLM, so it does the structuring at write time and the store never needs one. in the update test, keys alone kept the new value on top 20 out of 20 times.
+
+memories saved before any of this are append-only. `qenlo-memory review` groups the ones that look like the same fact written twice, using qenlo's exact search over every memory, so an agent can link the stale ones. on my own 243 memories it found 31 groups. the first one was a release that one memory called "not merged to prod" and a later one called "deployed".
+
 `qenlo-memory export` writes everything as json lines, replaced versions included, and `qenlo-memory import <file>` reads that back, or a mem0 export.
 
 ### four kinds of memory
