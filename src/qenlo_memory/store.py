@@ -32,6 +32,7 @@ KINDS = {"episodic": 1, "semantic": 2, "procedural": 3, "long_term": 4}
 _host = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
 OLLAMA = (_host if "://" in _host else "http://" + _host).rstrip("/")
 COMPACT_EVERY = 256  # WAL files before we fold them into a qenlo snapshot
+GPU_FROM = 4096  # qenlo's automatic router only uses the GPU from this many eligible rows (AUTOMATIC_GPU_MIN_ELIGIBLE_ROWS)
 RELATED = 0.82  # cosine above which an existing memory is probably about the same thing (measured on real memories)
 
 SECRET = re.compile(
@@ -176,8 +177,12 @@ class Store:
         self.search_backend = "none yet"
         if self.path.exists() and self.marker.exists() and self.marker.read_text().strip() != self.embed.model:
             shutil.rmtree(self.path)  # another model's vectors. sqlite has the text, re-embed below
-        self.vectors = self._open()
         live = self.db.execute("SELECT COUNT(*) FROM memories WHERE superseded_by IS NULL").fetchone()[0]
+        # bringing up wgpu costs ~200 MB of RAM, and below GPU_FROM rows the router would search on the cpu anyway.
+        # a store that grows past it gets the GPU path on the next daemon start.
+        if self.backend == "automatic" and live < GPU_FROM:
+            self.backend = "cpu"
+        self.vectors = self._open()
         # a crash between the sqlite commit and the qenlo add leaves the two out of step. rebuild from sqlite.
         if self.vectors.stats().live_rows != live:
             self.vectors.close()

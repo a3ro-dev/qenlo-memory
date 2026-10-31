@@ -138,7 +138,7 @@ the default is `snowflake-arctic-embed:22m` through ollama. it has 22M parameter
 
 i started with torch and sentence-transformers in the daemon. that meant a 2GB CUDA download to run a 22M-parameter model, while ollama was already sitting on the GPU. so embeddings go through ollama's local http api, and this package has no ML dependencies at all.
 
-on the GPU: ollama runs the embeddings there when it can. qenlo's collection opens in `automatic` mode, which searches on the GPU through wgpu once more than 4,096 memories match a query and uses the CPU below that. qenlo made that call because moving a small matrix to the GPU costs more than searching it. `qenlo-memory stats` shows where both actually ran.
+on the GPU: ollama runs the embeddings there when it can. qenlo searches on the CPU until the store holds 4,096 memories, and from the next daemon start after that it opens in `automatic` mode, which uses the GPU through wgpu once that many memories match a query. qenlo's router makes the same call below 4,096 rows, because moving a small matrix to the GPU costs more than searching it, and bringing wgpu up at all costs about 200 MB of RAM. `qenlo-memory stats` shows where both actually ran.
 
 ## numbers
 
