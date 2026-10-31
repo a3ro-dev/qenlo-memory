@@ -619,17 +619,17 @@ wheels = [
 
 [[package]]
 name = "qenlo"
-version = "0.1.0b1"
+version = "0.1.0b2"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/88/1bf7d320eefd56d3671aa99146e2eaf1cdd97955417da22b78c2e76de640/qenlo-0.1.0b1-py3-none-macosx_14_0_arm64.whl", hash = "sha256:3d91f2ce8f7ec2a0009137bd73ec09ff4f4a5643e3caf5d4f8f8391841d5c19d", size = 2222322, upload-time = "2026-10-14T17:15:04.93Z" },
-    { url = "https://files.pythonhosted.org/packages/37/90/6bc86f027858a8051abe7c2f31e5068dbe307d5e49aad0c3e2b9bab65535/qenlo-0.1.0b1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:fef53ca5a3bf81390cccd577933748fbe1e8f95be16584fb9087ecaf104bc5b0", size = 2897842, upload-time = "2026-10-14T17:15:07.191Z" },
-    { url = "https://files.pythonhosted.org/packages/58/1a/59d1878f2baee44d52616bd3c636c80ed776e4301bc5b824c2a3df204cb9/qenlo-0.1.0b1-py3-none-win_amd64.whl", hash = "sha256:db869ad9eb768435aa191c250b54742ad060035ef031ed57ac1981fb083eb049", size = 2836855, upload-time = "2026-10-14T17:15:09.19Z" },
+    { url = "https://files.pythonhosted.org/packages/14/f8/2eca193858dc6d699a17051ce602cc9a4ec8761881d389560023f1197d54/qenlo-0.1.0b2-py3-none-macosx_14_0_arm64.whl", hash = "sha256:273a01300c86a499d88bb805340fa010ef491ef34e43e14f08dfea9e9ffc181b", size = 2224165, upload-time = "2026-10-25T18:35:29.002Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/d5/5b4dc7006374b14797992dff7d46aded1cbfc1d37fa647bb0a6fdd82b8da/qenlo-0.1.0b2-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:ba624cf3bbcc994c2884430febe7595f92f5aba708e99ef2e2eee7b7e5b3e503", size = 2952277, upload-time = "2026-10-25T18:35:30.794Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/ca/025d129c210c15a54165fcbd4233912826b12cdb3add602d3473a8f4ec45/qenlo-0.1.0b2-py3-none-win_amd64.whl", hash = "sha256:6434a02f0b6e13d142ede2539b06a8c8e89c1577650ae27b7bdff81d26fc7409", size = 2868781, upload-time = "2026-10-25T18:35:33.057Z" },
 ]
 
 [[package]]
 name = "qenlo-memory"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
@@ -644,7 +644,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=2.2,<3" },
-    { name = "qenlo", specifier = "==0.1.0b1" },
+    { name = "qenlo", specifier = "==0.1.0b2" },
 ]
 
 [package.metadata.requires-dev]
