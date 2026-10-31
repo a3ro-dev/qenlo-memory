@@ -38,7 +38,8 @@ def box(lines: list[str]) -> str:
 def memory(m: dict) -> str:
     day = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["created"] / 1000))
     score = f"{m['score']:.2f}" if "score" in m else ""
-    meta = " · ".join(filter(None, [m["kind"].replace("_", " "), m["agent"], m["project"], day, score]))
+    gone = f"replaced by #{m['superseded_by']}" if m.get("superseded_by") else ""
+    meta = " · ".join(filter(None, [m["kind"].replace("_", " "), m["agent"], m["project"], day, score, gone]))
     head = f"{paint('●', KIND.get(m['kind'], DIM))} {paint('#' + str(m['id']), BOLD)}  {paint(meta, DIM)}"
     body = textwrap.wrap(" ".join(m["text"].split()), width() - 7) or [""]
     shown = [f"  {paint('⎿', DIM)}  {body[0]}", *(f"     {s}" for s in body[1:MAX_LINES])]
@@ -49,6 +50,12 @@ def memory(m: dict) -> str:
 
 def memories(rows: list[dict]) -> str:
     return "\n\n".join(map(memory, rows)) or paint("  no memories matched.", DIM)
+
+
+def related(r: dict) -> str:
+    """after a remember: memories that may now be stale, and what to do about it."""
+    tip = paint(f"  related. if #{r['id']} updates one, run it again with --replaces <id>; forget one that's wrong", DIM)
+    return "\n" + tip + "\n\n" + memories(r["related"])
 
 
 def done(text: str, detail: str = "") -> str:
@@ -68,7 +75,7 @@ def stats(s: dict) -> str:
     head = box([
         f"{paint('✻', RED)} {paint('qenlo-memory', BOLD)}",
         "",
-        f"  {s['memories']} memories · {len(s['by_agent'])} agents · embeddings on {s['embed_device']}",
+        f"  {s['memories']} memories · {s.get('superseded', 0)} replaced · {len(s['by_agent'])} agents · embeddings on {s['embed_device']}",
         paint(f"  {s['model']} · {home}", DIM),
     ])
     return "\n\n".join([head, bars("by agent", s["by_agent"]), bars("by kind", s["by_kind"])])
@@ -78,6 +85,8 @@ TIPS = [
     ('recall "<query>"', "search every agent's memory by meaning"),
     ('remember "<fact>" --kind K', "save one fact, how-to, decision or preference"),
     ("recent", "what every agent did lately"),
+    ('remember "<fact>" --replaces <id>', "update a fact, keeping the old one as history"),
+    ("history <id>", "every version of a memory"),
     ("forget <id>", "drop a memory that's wrong"),
     ("stats", "what's in there, and who wrote it"),
 ]

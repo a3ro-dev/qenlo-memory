@@ -15,7 +15,7 @@ from pathlib import Path
 HOME = Path(os.environ.get("QENLO_MEMORY_HOME", Path.home() / ".qenlo-memory"))
 PORT = int(os.environ.get("QENLO_MEMORY_PORT", "7437"))
 URL = f"http://127.0.0.1:{PORT}"
-OPS = {"remember", "recall", "recent", "forget", "stats", "context"}
+OPS = {"remember", "remember_many", "recall", "recent", "history", "forget", "export", "stats", "context"}
 # a hidden console instead of none: children of a console-less process get a fresh, visible window.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -168,6 +168,17 @@ def show(rows: list[dict]) -> str:
     return "\n".join(map(line, rows)) or "no memories matched."
 
 
+def saved(r: dict) -> str:
+    """the plain reply to a remember, for agents: what happened, then anything it may have made stale."""
+    head = f"already remembered as #{r['id']} (by {r['agent']})" if r.get("duplicate") else f"remembered #{r['id']}"
+    if r.get("replaced"):
+        head += f", replacing #{r['replaced']} (see: qenlo-memory history {r['id']})"
+    if r.get("related"):
+        head += (f"\nrelated memories. if #{r['id']} updates one of them, run the same remember again with"
+                 " --replaces <id>; if one is simply wrong, forget it:\n" + show(r["related"]))
+    return head
+
+
 def mcp_server(agent: str) -> None:
     from mcp.server.mcpserver import Context, MCPServer
 
@@ -187,15 +198,17 @@ def mcp_server(agent: str) -> None:
         return name
 
     @app.tool()
-    def remember(text: str, ctx: Context, kind: str = "semantic", project: str = "") -> str:
+    def remember(text: str, ctx: Context, kind: str = "semantic", project: str = "", replaces: int = 0) -> str:
         """Save one memory to the user's shared memory (every coding agent they use reads it).
         kind: episodic = something that happened (a decision, a fix, a session outcome),
         semantic = a fact (about the user, a project, a tool), procedural = how to do something
         (commands, workflows, conventions), long_term = a durable core fact about the user that
         every session should start with. project = repo/folder name, '' if it applies everywhere.
-        One self-contained fact per call. Never store secrets."""
-        r = call("remember", text=text, kind=kind, agent=who(ctx), project=project or here)
-        return f"already remembered as #{r['id']} (by {r['agent']})" if r.get("duplicate") else f"remembered #{r['id']}"
+        One self-contained fact per call. Never store secrets. replaces = the id of a memory this one
+        updates (a changed value, a reversed decision): the old one leaves search and stays in history.
+        The reply lists related memories; if the new one updates one of them, call again with replaces."""
+        r = call("remember", text=text, kind=kind, agent=who(ctx), project=project or here, replaces=replaces or None)
+        return saved(r)
 
     @app.tool()
     def recall(query: str, kind: str = "", agent: str = "", project: str = "", k: int = 8) -> str:
@@ -209,6 +222,11 @@ def mcp_server(agent: str) -> None:
     def recent(n: int = 20, kind: str = "", agent: str = "", project: str = "") -> str:
         """Newest memories first, from every agent unless filtered. Good for 'what was i doing'."""
         return show(call("recent", n=n, kind=kind, agent=agent, project=project))
+
+    @app.tool()
+    def history(id: int) -> str:
+        """Every version of memory #id, oldest first: what it replaced and what replaced it."""
+        return show(call("history", id=id))
 
     @app.tool()
     def forget(id: int) -> str:
@@ -258,6 +276,7 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--kind", default="semantic")
     r.add_argument("--project", default="")
     r.add_argument("--agent", default=shell_agent())
+    r.add_argument("--replaces", type=int, default=None, help="id of the memory this one updates")
     q = sub.add_parser("recall")
     q.add_argument("query")
     q.add_argument("-k", type=int, default=8)
@@ -268,6 +287,11 @@ def main(argv: list[str] | None = None) -> None:
         s.add_argument("--agent", default="")
         s.add_argument("--project", default="")
     sub.add_parser("forget").add_argument("id", type=int)
+    sub.add_parser("history", help="every version of a memory").add_argument("id", type=int)
+    sub.add_parser("export", help="every memory as json lines, superseded ones too")
+    im = sub.add_parser("import", help="add memories from json lines (ours, or mem0's export): text/memory, kind, project")
+    im.add_argument("file")
+    im.add_argument("--agent", default="import")
     sub.add_parser("stats")
     sub.add_parser("stop", help="stop the daemon")
     m = sub.add_parser("models", help="embedding models; `models use <name>` switches and re-embeds")
@@ -296,17 +320,30 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as e:  # a memory hiccup must never block the user's prompt
             print(f"qenlo-memory hook skipped: {e}", file=sys.stderr)
     elif a.cmd == "remember":
-        r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project)
+        r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project, replaces=a.replaces)
         if not look.COLOR:
-            print(("already remembered as #" if r.get("duplicate") else "remembered #") + str(r["id"]))
-        elif r.get("duplicate"):
-            print(look.done(f"already remembered as #{r['id']}", f"by {r['agent']}"))
+            print(saved(r))
         else:
-            print(look.done(f"remembered #{r['id']}", f"{r['kind'].replace('_', ' ')} · by {r['agent']}"))
+            what = f"already remembered as #{r['id']}" if r.get("duplicate") else f"remembered #{r['id']}"
+            detail = f"{r['kind'].replace('_', ' ')} · by {r['agent']}" + (f" · replaces #{r['replaced']}" if r.get("replaced") else "")
+            print(look.done(what, detail))
+            if r.get("related"):
+                print(look.related(r))
     elif a.cmd == "recall":
         print(rows(call("recall", query=a.query, kind=a.kind, agent=a.agent, project=a.project, k=a.k)))
     elif a.cmd == "recent":
         print(rows(call("recent", n=a.n, kind=a.kind, agent=a.agent, project=a.project)))
+    elif a.cmd == "history":
+        print(rows(call("history", id=a.id)))
+    elif a.cmd == "export":
+        for m in call("export"):
+            print(json.dumps(m, ensure_ascii=False))
+    elif a.cmd == "import":
+        with open(a.file, encoding="utf-8") as f:
+            items = [json.loads(x) for x in f if x.strip()]
+        current = [m for m in items if not m.get("superseded_by")]  # history doesn't survive an import, only what's true now
+        r = call("remember_many", items=current, agent=a.agent)
+        print(f"imported {r['added']} memories, skipped {r['skipped']} already there")
     elif a.cmd == "forget":
         r = call("forget", id=a.id)
         print(look.done(f"forgot #{r['id']}", r["text"][:70]) if look.COLOR else f"forgot #{r['id']}")

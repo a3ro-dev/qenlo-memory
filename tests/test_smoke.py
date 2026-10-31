@@ -96,3 +96,52 @@ def test_link(tmp_path):
     mine.mkdir()
     (mine / "notes.txt").write_text("keep", encoding="utf-8")
     assert "aren't ours" in link(mine, brain, False) and (mine / "notes.txt").exists()
+
+
+def test_update_and_history(tmp_path, embed):
+    """a changed fact replaces the old one: the old value stops coming back, but history keeps it."""
+    s = Store(tmp_path, embed)
+    old = s.remember("the qenlo-memory daemon listens on port 7437", "semantic", "codex", "qenlo-memory")
+    new = s.remember("the qenlo-memory daemon listens on port 7438", "semantic", "claude-code", "qenlo-memory")
+    assert [m["id"] for m in new["related"]] == [old["id"]]  # the agent is told what may be stale
+    again = s.remember("the qenlo-memory daemon listens on port 7438", "semantic", "claude-code", "qenlo-memory", replaces=old["id"])
+    assert again["duplicate"] and again["replaced"] == old["id"]  # linking after the fact
+    hits = s.recall("which port does the daemon use")
+    assert [m["id"] for m in hits] == [new["id"]] and old["id"] not in [m["id"] for m in s.recent()]
+    assert [m["id"] for m in s.history(old["id"])] == [old["id"], new["id"]] == [m["id"] for m in s.history(new["id"])]
+    third = s.remember("the daemon port moved again, to 7440", "semantic", "cursor", replaces=new["id"])
+    assert third["replaced"] == new["id"] and [m["id"] for m in s.history(old["id"])] == [old["id"], new["id"], third["id"]]
+    with pytest.raises(KeyError):
+        s.remember("anything", replaces=old["id"])  # only a current memory can be replaced
+    assert s.stats()["superseded"] == 2 and s.stats()["memories"] == 1
+    s.close()
+    s = Store(tmp_path, embed)  # restart: superseded memories stay out of both indexes
+    assert s.vectors.stats().live_rows == 1 and [m["id"] for m in s.recall("daemon port 7437")] == [third["id"]]
+    s.close()
+
+
+def test_keywords_and_import(tmp_path, embed):
+    """names, versions and paths that a small embedding model blurs still come back by keyword."""
+    s = Store(tmp_path, embed)
+    r = s.remember_many([{"text": f"note {i}: routine status update about the build"} for i in range(30)]
+                        + [{"memory": "pin qenlo==0.1.0b2 in pyproject.toml, plain pip skips pre-releases", "kind": "procedural"},
+                           {"text": "note 0: routine status update about the build"}])
+    assert r == {"added": 31, "skipped": 1}
+    assert s.recall("0.1.0b2", k=1)[0]["kind"] == "procedural"
+    dump = s.export()
+    assert len(dump) == 31 and {"superseded_by", "created", "agent"} <= dump[0].keys()
+    s.close()
+
+
+def test_time_window():
+    from datetime import datetime
+
+    from qenlo_memory.store import time_window
+
+    now = int(datetime(2026, 10, 31, 12).timestamp() * 1000)
+    day = lambda ms: datetime.fromtimestamp(ms / 1000).date().isoformat()
+    assert [day(x) for x in time_window("what did we ship in september", now)] == ["2026-08-29", "2026-10-04"]
+    assert [day(x) for x in time_window("the fix from 3 days ago", now)] == ["2026-10-25", "2026-10-31"]
+    assert time_window("what did i decide yesterday", now)[1] == now
+    for none in ("how do i release qenlo", "the season may change", "how many weeks ago did i start"):
+        assert time_window(none, now) is None, none
