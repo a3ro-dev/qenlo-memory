@@ -35,12 +35,14 @@ BRAIN = HOME / "brain"
 
 RULE = f"""## shared memory (qenlo-memory)
 you share one long-term memory with every other coding agent the user runs (claude code, codex, cursor,
-antigravity, gemini, and others), through the `qenlo-memory` command in your shell.
+antigravity, gemini, copilot, amp, droid, and others), through the `qenlo-memory` command in your shell.
 - before real work, run `qenlo-memory recall "<what you're about to do>" --project <repo>`. other agents may have already learned it.
 - when you learn something that should outlive this session, run
   `qenlo-memory remember "<one self-contained fact>" --kind <kind> --project <repo>` with the right kind:
   semantic (a fact), procedural (how to do something here), episodic (what happened, a decision or a fix),
   long_term (a durable fact about the user). leave --project off if it applies everywhere.
+- when a fact changes (a new port, a reversed decision), save the new one with `--replaces <old id>`: the old one
+  stops coming back but stays in `qenlo-memory history <id>`. `remember` lists related memories; check them.
 - `qenlo-memory recent -n 10` shows what was happening lately, `qenlo-memory forget <id>` drops a wrong memory.
 - every memory says which agent wrote it. yours is detected from your shell; if it shows up as `cli`,
   pass `--agent <your harness>` (claude-code, codex, cursor, gemini-cli, antigravity, ...).
@@ -54,7 +56,8 @@ POINTER = f"""{MARK}
 ## shared memory (qenlo-memory)
 you share one long-term memory with every coding agent the user runs. before real work run
 `qenlo-memory recall "<what you're about to do>" --project <repo>`, and save what should outlive this session with
-`qenlo-memory remember "<one fact>" --kind semantic|procedural|episodic|long_term --project <repo>`. never store secrets.
+`qenlo-memory remember "<one fact>" --kind semantic|procedural|episodic|long_term --project <repo>` (add `--replaces <id>`
+when it updates an older memory). never store secrets.
 full rules: {(BRAIN / "RULES.md").as_posix()} · the user's profile: {(BRAIN / "profile.md").as_posix()}
 {MARK}
 """
@@ -95,6 +98,8 @@ def entry(style: str, cmd: list[str]) -> dict:
         return {"type": "local", "command": [command, *args], "enabled": True}
     if style == "stdio":
         return {"type": "stdio", "command": command, "args": args, "env": {}}
+    if style == "copilot":  # copilot cli only exposes the tools a server lists
+        return {"type": "local", "command": command, "args": args, "env": {}, "tools": ["*"]}
     return {"command": command, "args": args, "env": {}}
 
 
@@ -308,6 +313,11 @@ def agents(cmd, mcp: bool):
     oc = H / ".config" / "opencode"
     oc_file = next((oc / f for f in ("opencode.jsonc", "opencode.json") if (oc / f).exists()), oc / "opencode.json")
     ws = H / ".codeium" / "windsurf"
+    goose = APP / "Block" / "goose" / "config" if os.name == "nt" else H / ".config" / "goose"
+    crush = Path(os.environ.get("LOCALAPPDATA", H)) / "crush" if os.name == "nt" else H / ".config" / "crush"
+    crush = crush if crush.exists() else H / ".config" / "crush"
+    zed = APP / "Zed" if os.name == "nt" else H / ".config" / "zed"
+    cline_rules = H / "Documents" / "Cline" / "Rules"
     only_mcp = lambda step: {"mcp": step} if mcp else {}  # no shell, so the MCP server is the only way in
     return [
         ("claude code", H / ".claude", {
@@ -345,6 +355,30 @@ def agents(cmd, mcp: bool):
             "rules": files((ws / "memories" / "global_rules.md", POINTER))}),
         ("qoder", H / ".qoder", {
             "mcp": mcp_json(H / ".qoder" / "mcp.json", ["mcpServers"], "plain", cmd, mcp), "skill": links(skill, sk(H / ".qoder" / "skills"))}),
+        # 0.3. each one reads the shared ~/.agents/skills too; a rules file gets the pointer block.
+        ("copilot cli", H / ".copilot", {
+            "mcp": mcp_json(H / ".copilot" / "mcp-config.json", ["mcpServers"], "copilot", cmd, mcp),
+            "skill": links(skill, sk(H / ".copilot" / "skills")), "rules": files((H / ".copilot" / "copilot-instructions.md", POINTER))}),
+        ("amp", H / ".config" / "amp", {
+            "mcp": mcp_json(H / ".config" / "amp" / "settings.json", ["amp.mcpServers"], "plain", cmd, mcp),
+            "skill": links(skill, shared), "rules": files((H / ".config" / "amp" / "AGENTS.md", POINTER))}),
+        ("factory droid", H / ".factory", {
+            "mcp": mcp_json(H / ".factory" / "mcp.json", ["mcpServers"], "stdio", cmd, mcp),
+            "skill": links(skill, sk(H / ".factory" / "skills")), "rules": files((H / ".factory" / "AGENTS.md", POINTER))}),
+        ("auggie", H / ".augment", {
+            "mcp": mcp_json(H / ".augment" / "settings.json", ["mcpServers"], "plain", cmd, mcp),
+            "skill": links(skill, sk(H / ".augment" / "skills")), "rules": links(rules, H / ".augment" / "rules" / "qenlo-memory.md")}),
+        ("goose", goose, {"skill": links(skill, sk(goose / "skills")), "rules": files((goose / ".goosehints", POINTER))}),
+        ("crush", crush, {"mcp": mcp_json(crush / "crush.json", ["mcp"], "stdio", cmd, mcp), "skill": links(skill, sk(crush / "skills"))}),
+        ("cline", H / ".cline", {"skill": links(skill, shared, sk(H / ".cline" / "skills")),
+                                 **({"rules": links(rules, cline_rules / "qenlo-memory.md")} if cline_rules.exists() else {})}),
+        ("roo code", H / ".roo", {"skill": links(skill, shared), "rules": links(rules, H / ".roo" / "rules" / "qenlo-memory.md")}),
+        ("kilo code", H / ".kilo", {"skill": links(skill, shared, sk(H / ".kilo" / "skills"))}),
+        ("continue", H / ".continue", {"rules": links(rules, H / ".continue" / "rules" / "qenlo-memory.md")}),
+        ("junie", H / ".junie", {
+            "mcp": mcp_json(H / ".junie" / "mcp" / "mcp.json", ["mcpServers"], "plain", cmd, mcp), "skill": links(skill, sk(H / ".junie" / "skills"))}),
+        ("trae", H / ".trae", {"skill": links(skill, sk(H / ".trae" / "skills"))}),
+        ("zed", zed, only_mcp(mcp_json(zed / "settings.json", ["context_servers"], "plain", cmd))),
         ("vs code", APP / "Code" / "User", only_mcp(mcp_json(APP / "Code" / "User" / "mcp.json", ["servers"], "stdio", cmd))),
         ("claude desktop", APP / "Claude", only_mcp(mcp_json(APP / "Claude" / "claude_desktop_config.json", ["mcpServers"], "plain", cmd))),
     ]
