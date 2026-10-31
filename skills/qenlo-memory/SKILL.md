@@ -1,6 +1,6 @@
 ---
 name: qenlo-memory
-description: Shared long-term memory across every coding agent the user runs (Claude Code, Codex, Cursor, Antigravity, Gemini CLI, opencode, Kiro, and others), stored locally in qenlo. Use at the start of any task to recall what other agents already learned about the user or the project, and whenever you learn something worth keeping past this session. Also use when the user says "remember", "recall", "what do you know about", "what was i doing", or "forget that".
+description: Shared long-term memory across every coding agent the user runs (Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot CLI, Amp, Droid, opencode, Kiro, and others), stored locally in qenlo. Use at the start of any task to recall what other agents already learned about the user or the project, and whenever you learn something worth keeping past this session. Also use when the user says "remember", "recall", "what do you know about", "what was i doing", or "forget that".
 ---
 
 # qenlo-memory
@@ -13,12 +13,15 @@ run these in your shell. they talk to a small local daemon that starts itself.
 
 | command | use it for |
 | --- | --- |
-| `qenlo-memory recall "<query>" [--kind K] [--agent A] [--project P] [-k 8]` | search by meaning. leave filters off to search every agent's memories |
-| `qenlo-memory remember "<text>" --kind K [--project P]` | save one self-contained memory. your agent name is detected from your shell; pass `--agent <harness>` if it comes out as `cli` |
+| `qenlo-memory recall "<query>" [--kind K] [--agent A] [--project P] [-k 8]` | search by meaning and by exact words (names, versions, paths). time words like "last week" or "in september" narrow it to that time. leave filters off to search every agent's memories |
+| `qenlo-memory remember "<text>" --kind K [--project P] [--replaces ID]` | save one self-contained memory. it prints related memories that may now be stale. your agent name is detected from your shell; pass `--agent <harness>` if it comes out as `cli` |
+| `qenlo-memory history <id>` | every version of a memory: what it replaced and what replaced it |
 | `qenlo-memory recent [-n 20] [--kind K] [--agent A] [--project P]` | newest first. good for "what was i doing" and catching up after another agent |
 | `qenlo-memory forget <id>` | delete a memory that is wrong or stale. it's gone for good |
 
-if you have `qenlo-memory` MCP tools (`recall`, `remember`, `recent`, `forget`), they are the same four with the same arguments. use whichever you have.
+if you have `qenlo-memory` MCP tools (`recall`, `remember`, `recent`, `history`, `forget`), they are the same commands with the same arguments. use whichever you have.
+
+`qenlo-memory export > memories.jsonl` and `qenlo-memory import memories.jsonl` move a memory between machines (import also reads mem0 exports).
 
 the user's long-term profile is also a plain file: `~/.qenlo-memory/brain/profile.md`.
 
@@ -50,11 +53,19 @@ every result looks like this:
 - you discover how a project works: its build, test, and release steps, or a gotcha.
 - a meaningful decision gets made, along with why.
 
-write one fact per call, and make it make sense to an agent with zero context. pass `--project` as the repo or folder name, or leave it off if it applies everywhere. saving the exact same text twice returns the existing memory. if a fact changed, `forget` the old one.
+write one fact per call, and make it make sense to an agent with zero context. pass `--project` as the repo or folder name, or leave it off if it applies everywhere. saving the exact same text twice returns the existing memory.
+
+## when a fact changes
+
+stale memories are worse than none: an old port or a reversed decision keeps coming back and looks just as sure as the new one. so:
+
+- `remember` prints related memories after it saves. read them. if your new memory updates one (same subject, new value), run the same `remember` again with `--replaces <that id>`. it links them without saving twice.
+- if you already know the old id, pass `--replaces <id>` the first time.
+- the old memory leaves recall and recent, and `history <id>` still shows it with "replaced by #new". use `forget` only for memories that were never true.
 
 ## never
 
 - store secrets, tokens, passwords, keys, or private personal data. the store redacts common key formats, but don't rely on that.
 - store whole files, long logs, or diffs. store the conclusion.
 - store things the repo already records, like code structure or git history.
-- quietly overwrite another agent's memory. if it's wrong, `forget` it and `remember` the correction.
+- quietly overwrite another agent's memory. if it's outdated, `remember` the correction with `--replaces <id>`; if it was never true, `forget` it.
