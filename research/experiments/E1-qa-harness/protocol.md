@@ -24,3 +24,12 @@ with the LLM only in the benchmark, never in qenlo-memory.
   reasoning reader would also flatter the memory next to published GPT-4o-reader numbers. approved by akshat.
 - judge unchanged (`nvidia/nemotron-3-ultra-550b-a55b`, 2,048-token budget for its reasoning).
 - 12 worker threads (gemma-4 takes ~45 s per call on NIM); the shared pacer still caps requests at 35/min.
+
+## amendment 2 (2026-11-15, before any result counted; akshat asked for fast eval and delegated the choice)
+
+- reader: `nvidia/nemotron-3-ultra-550b-a55b` with `enable_thinking: false` (0 reasoning tokens, 2-5 s, answered the
+  date-math probe correctly). the harness rejects any reader reply that reports reasoning tokens.
+  gemma-4-31b was correct but 13-45 s per call; lightning-30b was fast but got the arithmetic wrong.
+- judge: `google/gemma-4-31b-it` (a different family from the reader, no hidden reasoning, like GPT-4o in the
+  official setup).
+- judge check: 50 random judged items re-judged by nemotron-ultra with thinking on; agreement reported.
