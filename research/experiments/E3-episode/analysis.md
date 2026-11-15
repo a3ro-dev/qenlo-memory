@@ -39,7 +39,8 @@ only boosts (max(turn, mix)) rather than replaces. not tuned on the test set yet
 
 - 0.3 beats EdgeMem's retrieval on all four reported numbers, with our strict recall_all; under recall_any the gap
   is wider (96.6 at k=3). EdgeMem's "R" is not defined beyond "Recall"; we report both so neither reading flatters us.
-- caveats: EdgeMem used the 2025-09 cleaned LongMemEval release; ours is the file in data/raw (see survey.md).
+- dataset: our data/raw/longmemeval_s.json is byte-identical (sha256 d6f21ea9...c3a442) to longmemeval_s_cleaned.json in
+  huggingface.co/datasets/xiaowu0162/longmemeval-cleaned, the cleaned release EdgeMem reports using. same data.
   ranking unit differs: EdgeMem ranks turns into an evidence pack; we rank sessions by their best turn.
 - E3 at session level: NDCG up, R_all down ~1 (spread-evidence questions again). episode_div is identical at the
   session level by construction (it only reorders turns within already-seen sessions).
