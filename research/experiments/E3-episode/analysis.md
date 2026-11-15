@@ -18,3 +18,11 @@
   reader (context around a hit); judged in QA, not here.
 - latency: episode 0.9-3.8 ms per query (session fts table), still CLI-instant.
 - next: E3 QA gate; E3.1 = episode + diversity floor (>= 3 distinct sessions in the top k) to recover multi-hop.
+
+## E3.1 diversity floor (confirmatory, protocol d9e3964): refuted
+
+`episode_div` memscore 68.87 (obs 58.7, turns 60.0, lme 87.9) vs E3 70.16. multi-hop not recovered (c1 obs 32.7,
+turns 28.4; 0.3 had 36.5 / 30.9). so the c1 loss is not one session crowding the top 5. better reading: multi-hop
+evidence lives in sessions that are mostly about something else, so their *session* bm25 is low and the 0.5 session
+weight demotes the gold turn itself. that predicts a fix through a lower session weight or a session score that
+only boosts (max(turn, mix)) rather than replaces. not tuned on the test set yet: next protocol if E3 passes QA.
