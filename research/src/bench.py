@@ -34,7 +34,7 @@ class Cache:
         from qenlo_memory import models
 
         self.spec = model or models.active()
-        self.db = sqlite3.connect(DATA / "embcache.sqlite")
+        self.db = sqlite3.connect(DATA / "embcache.sqlite", timeout=600)  # prewarm/bench may write the cache at once
         self.db.execute("CREATE TABLE IF NOT EXISTS e(k BLOB PRIMARY KEY, v BLOB)")
 
     def key(self, text: str, query: bool) -> bytes:
