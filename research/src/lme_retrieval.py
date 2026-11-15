@@ -26,22 +26,25 @@ from suites import RAW, Haystack, Query, ms  # noqa: E402
 from qenlo_memory.store import redact  # noqa: E402
 
 
+def lme_all_one(q: dict) -> Haystack:
+    """one question's haystack, every turn; h.role maps doc id -> 'user' | 'assistant'."""
+    h = Haystack(q["question_id"], [], {})
+    h.role = {}
+    for sid, date, session in zip(q["haystack_session_ids"], q["haystack_dates"], q["haystack_sessions"]):
+        when = ms(datetime.strptime(date, "%Y/%m/%d (%a) %H:%M"))
+        for i, t in enumerate(session):
+            if t["content"].strip():  # the text the Store would keep, so the prewarmed cache hits
+                h.docs.append((len(h.docs) + 1, redact(t["content"].strip()), when + i * 1000))
+                h.unit[len(h.docs)] = (sid,)
+                h.role[len(h.docs)] = t["role"]
+    when = ms(datetime.strptime(q["question_date"], "%Y/%m/%d (%a) %H:%M"))
+    h.queries.append(Query(q["question"], set(q["answer_session_ids"]), q["question_type"], when))
+    return h
+
+
 def lme_all() -> list[Haystack]:
-    out = []
-    for q in json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8")):
-        if q["question_id"].endswith("_abs"):
-            continue
-        h = Haystack(q["question_id"], [], {})
-        for sid, date, session in zip(q["haystack_session_ids"], q["haystack_dates"], q["haystack_sessions"]):
-            when = ms(datetime.strptime(date, "%Y/%m/%d (%a) %H:%M"))
-            for i, t in enumerate(session):
-                if t["content"].strip():  # the text the Store would keep, so the prewarmed cache hits
-                    h.docs.append((len(h.docs) + 1, redact(t["content"].strip()), when + i * 1000))
-                    h.unit[len(h.docs)] = (sid,)
-        when = ms(datetime.strptime(q["question_date"], "%Y/%m/%d (%a) %H:%M"))
-        h.queries.append(Query(q["question"], set(q["answer_session_ids"]), q["question_type"], when))
-        out.append(h)
-    return out
+    return [lme_all_one(q) for q in json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
+            if not q["question_id"].endswith("_abs")]
 
 
 def ndcg(ranked: list, gold: set, k: int) -> float:

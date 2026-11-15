@@ -143,6 +143,8 @@ def retrieve(q: dict, config: str, embed) -> tuple[list, dict]:
     gold = set(q["answer_session_ids"])
     if config == "oracle":
         return [(w, [(t["role"], t["content"]) for t in s]) for sid, w, s in sess if sid in gold], {"recall_any": 1.0, "recall_all": 1.0}
+    if config.startswith("ranker:"):  # any bench ranker over the all-turns index (lme_retrieval.py's haystack)
+        return _ranked(q, config.split(":", 1)[1], embed, gold)
     docs, origin = [], {}
     for sid, w, s in sess:
         for i, t in enumerate(s):
@@ -170,9 +172,25 @@ def retrieve(q: dict, config: str, embed) -> tuple[list, dict]:
     return chunks, {"recall_any": float(bool(gold & found)), "recall_all": float(gold <= found) if gold else 1.0}
 
 
+def _ranked(q: dict, name: str, embed, gold: set) -> tuple[list, dict]:
+    import rankers
+    from bench import Index
+    from lme_retrieval import lme_all_one
+
+    h = lme_all_one(q)
+    idx = Index(h, embed)
+    qq = h.queries[0]
+    ranked = getattr(rankers, name)(idx, qq, embed([qq.text], query=True)[0])[:TOPK]
+    role = {d: r for d, r in h.role.items()}
+    chunks = [(idx.created[d], [(role[d], idx.text[d])]) for d in ranked]
+    found = {h.unit[d][0] for d in ranked}
+    idx.close()
+    return chunks, {"recall_any": float(bool(gold & found)), "recall_all": float(gold <= found) if gold else 1.0}
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("config", choices=["dense", "hybrid", "oracle"])
+    ap.add_argument("config")  # dense | hybrid | oracle | ranker:<name in rankers.py>
     ap.add_argument("--key-file", required=True)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--rpm", type=float, default=35)
@@ -183,7 +201,7 @@ def main():
         per, seen = max(1, a.limit // 6), collections.Counter()
         data = [q for q in data if (seen.update([q["question_type"]]) or seen[q["question_type"]] <= per)]
     llm, embed = LLM(Path(a.key_file).read_text().strip(), a.rpm), StoreEmbed()
-    out_path = DATA / f"qa_{a.config}.jsonl"
+    out_path = DATA / f"qa_{a.config.replace(':', '-')}.jsonl"
 
     t0 = time.time()
     prepared = []

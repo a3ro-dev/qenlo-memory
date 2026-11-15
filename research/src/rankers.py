@@ -242,3 +242,20 @@ def episode_nb(idx, q, qv):
 
 def time_interp_nb(idx, q, qv):
     return _with_neighbours(time_interp(idx, q, qv), idx)
+
+
+def _diverse(ranked, idx, floor=3, window=5):
+    """EdgeMem's diversity floor: at least `floor` distinct sessions among the first `window` results."""
+    out, seen = [], set()
+    for d in ranked:
+        s = _session(idx, d)
+        if len(out) < window and s in seen and window - len(out) <= floor - len(seen):
+            continue  # this slot is needed for a new session
+        out.append(d)
+        seen.add(s)
+    head = out[:window]
+    return head + [d for d in ranked if d not in set(head)]  # everything else keeps its original order
+
+
+def episode_div(idx, q, qv):
+    return _diverse(episode(idx, q, qv), idx)

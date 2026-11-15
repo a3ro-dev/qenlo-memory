@@ -18,3 +18,11 @@ order changed from the original plan (embedders first) because of that ablation;
   are already self-contained facts); neighbour readout costs turn-level R@5 slots on locomo-obs but helps QA.
 - for the product: a "session" for agent-written memories = same agent + project within a short gap (to be designed
   only if E3 wins).
+
+## E3.1 (locked 2026-11-15, after E3's result, before running it)
+
+hypothesis: E3 loses multi-hop because the session score fills the top with one session. EdgeMem's diversity floor
+(K=3 distinct episodes) should recover it. `episode_div`: walk the episode ranking; a turn from an already-seen
+session may take one of the first 5 slots only while enough slots remain to still reach 3 distinct sessions.
+K=3 and the 5-slot window fixed in advance. prediction: c1 (multi-hop) back to >= 0.3's level, memscore >= E3 - 0.5.
+QA gate: ranker:time_interp (0.3) vs ranker:episode / episode_div / episode_nb on the E1 harness.
