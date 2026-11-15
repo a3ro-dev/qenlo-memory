@@ -160,6 +160,28 @@ measured on my laptop (rtx 4050, ollama 0.34.4) on a copy of my own store, 243 r
 
 most of a recall is the embedding call to ollama. the vector search is exact, not approximate, and at this size it's a rounding error. these are in-process numbers, and the MCP hop from an agent adds a local http request on top.
 
+### against the llm-free field (0.4)
+
+EdgeMem (arXiv:2609.05553, sep 2026) is the strongest published memory that runs without an llm. on its own LongMemEval-S
+table (470 questions, every turn indexed, the cleaned release, byte-identical file), with no llm anywhere:
+
+| | R@3 | NDCG@3 | R@10 | NDCG@10 |
+| --- | ---: | ---: | ---: | ---: |
+| EdgeMem (paper) | 81.49 | 90.49 | 93.83 | 92.80 |
+| MemGAS (from EdgeMem's table) | 78.51 | 86.83 | 94.47 | 89.96 |
+| **qenlo-memory 0.4** (arctic-33m) | **82.77** | **91.44** | **94.89** | **93.81** |
+
+R is the strict reading (every gold session in the top k). recall takes 0.6 ms after the query embedding. `research/src/lme_retrieval.py` runs it.
+
+answer accuracy on all 500 LongMemEval-S questions, judged with LongMemEval's own per-type prompts: **71.6%** (task
+average 76.9%, abstention 76.7%). per type: single-session user 95.7, assistant 98.2, knowledge update 85.9, preference
+70.0, temporal 62.4, multi-session 48.9. the memory stays llm-free; the llm is only the benchmark's reader
+(nemotron-3-ultra, no thinking) and judge (nemotron-3.5-lightning), both on nvidia's free api. EdgeMem reports 60.0 on
+the same questions (gpt-4o-mini reader); supermemory's published ~85% uses gpt-4o, so neither is a same-reader
+comparison. readout: the best whole sessions, as many as score within 0.8x of the best (2-6). on a 195-question
+stratified subset a plain top-10-turn readout did better (79.5% vs 71.3%), so the readout is the next thing to fix,
+especially multi-session. `research/src/qa.py dynamic --cot` reproduces it.
+
 ### against mem0
 
 ![dot-matrix comparison with mem0: recall@5, search latency, peak RAM and install size](docs/img/vs-mem0.png)
