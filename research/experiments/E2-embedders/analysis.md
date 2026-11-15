@@ -26,3 +26,10 @@ hybrid memscore = mean(locomo-obs R@5, locomo-turns R@5). default arctic-22m = 5
 - pareto front (size vs hybrid): 22m, 33m, 110m, nomic, embeddinggemma. stage B runs lme-s on those four.
 - bge-m3 and qwen3-embedding underperform their size here (bge-m3's ollama build has no query prefix; qwen3 is
   instruction-tuned and we use one fixed instruction). not tuned: we measure what a user who picks them gets.
+
+## stage B: arctic-33m on lme-s (confirmatory)
+
+lme-s recall_all@5 88.2 (22m: 87.7). full memscore = mean(60.0, 62.1, 88.2) = **70.10** vs the default's 68.07:
++2.03, every suite up (+1.1 / +4.5 / +0.5). meets the default-change rule (67 MB <= ~70 MB, >= +1.0, no suite down).
+before the switch: query-embed latency and daemon RAM vs 22m (measured with the GPU idle), and the product parity
+check through Store.recall. remaining stage B (110m, nomic, embeddinggemma) running.

@@ -15,3 +15,4 @@
 - E3.2 episode_boost: memscore 70.53 (best), lme preference recovered, LME-470 R_all@3 82.98 (-1.5 vs 0.3). episode family trades LME session recall for LoCoMo turn recall; QA gate decides.
 - E2 stage A (locomo only, time_interp): arctic-33m 61.05 vs 22m 58.25 (+2.8); all-minilm 56.18, granite-30m 55.82. dense alone: 33m 52.56, minilm 40.72, granite 40.86 (bm25 rescues the weak ones, as predicted).
 - 2026-11-15 LME-S file = HF longmemeval-cleaned (sha256 match). judge minimax saturated on NIM (1/15 burst ok, both keys): amendment 5, lightning-30b judge (15/15, 1.6 s), step-5 cross-family check. QA restarted, reader answers cached.
+- E2 stage B: arctic-33m memscore 70.10 vs 68.07 (every suite up). passes the default-change rule pending latency/RAM.
