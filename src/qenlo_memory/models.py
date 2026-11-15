@@ -27,8 +27,8 @@ class Model:
 
 
 LIBRARY = {m.name: m for m in [
-    Model("snowflake-arctic-embed:22m", 384, "46 MB", "default. tiny, fast, english", ARCTIC),
-    Model("snowflake-arctic-embed:33m", 384, "67 MB", "a little better, still tiny", ARCTIC),
+    Model("snowflake-arctic-embed:22m", 384, "46 MB", "smallest, english (default before 0.4)", ARCTIC),
+    Model("snowflake-arctic-embed:33m", 384, "67 MB", "default. tiny, fast, english", ARCTIC),
     Model("snowflake-arctic-embed:110m", 768, "219 MB", "mid-size english", ARCTIC),
     Model("snowflake-arctic-embed:335m", 1024, "669 MB", "best arctic v1, english", ARCTIC),
     Model("snowflake-arctic-embed2", 1024, "1.2 GB", "multilingual arctic", "query: "),
@@ -41,7 +41,7 @@ LIBRARY = {m.name: m for m in [
     Model("qwen3-embedding:0.6b", 1024, "639 MB", "multilingual, instruction-tuned",
           "Instruct: Given a question, retrieve memories that answer it\nQuery: "),
 ]}
-DEFAULT = "snowflake-arctic-embed:22m"
+DEFAULT = "snowflake-arctic-embed:33m"  # 0.4: +2.0 memscore over 22m, same latency (research/experiments/E2-embedders)
 
 
 def config() -> dict:
