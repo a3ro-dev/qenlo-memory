@@ -43,3 +43,14 @@ fusing ranks, (2) making validity explicit so stale facts stop being retrieved, 
 query. graph construction, reflection and agentic multi-step retrieval give more, but they need an LLM in the
 loop, and in qenlo-memory the agent calling us already *is* that loop: we should return good candidates fast
 and let it decide.
+
+## 2026-11-15 additions (second pass)
+
+| work | idea | LLM-free? | plan |
+| --- | --- | --- | --- |
+| EdgeMem (arXiv:2609.05553) | episode score = turn bm25 + session bm25; +-1 neighbour readout; rare-key co-occurrence hubs; date gate | yes, fully (no embeddings) | E3/E4: the bar to beat; see edgemem-2609.05553.md |
+| MemORAI (arXiv:2605.01386) | dynamic weighted PageRank over a provenance graph; topic segmentation is critical (LME R@10 91.6 -> 23.9 without) | no (gpt-oss-20b builds it) | idea only: segmentation matters |
+| weft PR #1 (github MennoAf/weft) | additive same-session sibling expansion (8 slots) after the top window | yes | E4 variant |
+| FluctlightDB (arXiv:2608.12365) | one engram per session, hybrid bm25+dense, session recall@8 97.6% | partly | session-level unit |
+| ECHO (arXiv:2608.21755) | LME-S turn R@5 88.8, session R@5 88.7 | ? | reference numbers |
+| RMM (ACL 2025) | session-level retrieval beats turn-level (richer context); mixed granularity is noisy | n/a | caution for E4 |
