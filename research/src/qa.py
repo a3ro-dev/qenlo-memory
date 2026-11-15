@@ -69,20 +69,24 @@ JUDGE_PROMPTS = {
 
 
 class LLM:
-    """one shared pacer for the whole process: NIM's free tier counts requests per minute per key."""
+    """one pacer per key, shared by every thread: NIM's free tier counts requests per minute per key.
+    each call goes to the key that is free soonest."""
 
-    def __init__(self, key: str, rpm: float):
-        self.key, self.gap, self.next, self.lock = key, 60.0 / rpm, 0.0, threading.Lock()
+    def __init__(self, keys: list[str], rpm: float):
+        self.keys, self.gap, self.lock = keys, 60.0 / rpm, threading.Lock()
+        self.next = [0.0] * len(keys)
         self.db = sqlite3.connect(DATA / "llmcache.sqlite", check_same_thread=False)
         self.db.execute("CREATE TABLE IF NOT EXISTS c(k BLOB PRIMARY KEY, model TEXT, out TEXT, at TEXT)")
         self.dbl, self.calls = threading.Lock(), 0
 
-    def _pace(self, extra: float = 0.0):
+    def _pace(self) -> int:
         with self.lock:
             now = time.monotonic()
-            wait = max(0.0, self.next - now)
-            self.next = max(now, self.next) + self.gap + extra
+            i = min(range(len(self.keys)), key=self.next.__getitem__)
+            wait = max(0.0, self.next[i] - now)
+            self.next[i] = max(now, self.next[i]) + self.gap
         time.sleep(wait)
+        return i
 
     def __call__(self, model: str, prompt: str, max_tokens: int, extra: dict | None = None) -> str:
         extra = extra or {}
@@ -94,9 +98,9 @@ class LLM:
         body = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}],
                            "max_tokens": max_tokens, "temperature": 0, **extra}).encode()
         for attempt in range(8):
-            self._pace()
+            ki = self._pace()
             try:
-                req = urllib.request.Request(URL, body, {"Authorization": "Bearer " + self.key, "Content-Type": "application/json"})
+                req = urllib.request.Request(URL, body, {"Authorization": "Bearer " + self.keys[ki], "Content-Type": "application/json"})
                 d = json.load(urllib.request.urlopen(req, timeout=180))
                 self.calls += 1
                 got = d.get("model", model)
@@ -116,10 +120,10 @@ class LLM:
                 if e.code not in (429, 500, 502, 503, 504):
                     raise
                 retry = float(e.headers.get("Retry-After") or 0)
-                print(f"  retry {attempt + 1} ({model}): HTTP {e.code}, retry-after {retry:.0f}s", file=sys.stderr, flush=True)
-                if retry:  # the server named a wait: everyone waits. otherwise only this thread backs off
+                print(f"  retry {attempt + 1} ({model}, key {ki}): HTTP {e.code}, retry-after {retry:.0f}s", file=sys.stderr, flush=True)
+                if retry:  # the server named a wait: that key waits. otherwise only this thread backs off
                     with self.lock:
-                        self.next = max(self.next, time.monotonic() + retry)
+                        self.next[ki] = max(self.next[ki], time.monotonic() + retry)
                 time.sleep(min(60, 2 ** attempt))
             except (urllib.error.URLError, TimeoutError, RuntimeError, KeyError) as e:
                 print(f"  retry {attempt + 1} ({model}): {str(e)[:80]}", file=sys.stderr, flush=True)
@@ -195,16 +199,16 @@ def _ranked(q: dict, name: str, embed, gold: set) -> tuple[list, dict]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("config")  # dense | hybrid | oracle | ranker:<name in rankers.py>
-    ap.add_argument("--key-file", required=True)
+    ap.add_argument("--key-file", required=True, action="append", help="repeat for more keys; each gets its own pacer")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--rpm", type=float, default=35)
+    ap.add_argument("--rpm", type=float, default=20)  # per key; NIM 429s the judge at ~35/min on one key
     ap.add_argument("--workers", type=int, default=12)  # gemma-4 takes ~45 s per call on NIM; the pacer still caps rpm
     a = ap.parse_args()
     data = json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
     if a.limit:  # stratified: the first N/6 of each type, so a smoke run still covers every type
         per, seen = max(1, a.limit // 6), collections.Counter()
         data = [q for q in data if (seen.update([q["question_type"]]) or seen[q["question_type"]] <= per)]
-    llm, embed = LLM(Path(a.key_file).read_text().strip(), a.rpm), StoreEmbed()
+    llm, embed = LLM([Path(f).read_text().strip() for f in a.key_file], a.rpm), StoreEmbed()
     out_path = DATA / f"qa_{a.config.replace(':', '-')}.jsonl"
 
     t0 = time.time()

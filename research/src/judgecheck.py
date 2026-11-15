@@ -20,13 +20,13 @@ SECOND = "nvidia/nemotron-3-ultra-550b-a55b"
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("config")
-    ap.add_argument("--key-file", required=True)
+    ap.add_argument("--key-file", required=True, action="append", help="repeat for more keys; each gets its own pacer")
     ap.add_argument("-n", type=int, default=50)
     a = ap.parse_args()
     qs = {q["question_id"]: q for q in json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))}
     rows = [r for r in map(json.loads, (DATA / f"qa_{a.config}.jsonl").open(encoding="utf-8")) if "error" not in r]
     sample = random.Random(0).sample(rows, min(a.n, len(rows)))
-    llm, agree, flips = LLM(Path(a.key_file).read_text().strip(), 35), 0, []
+    llm, agree, flips = LLM([Path(f).read_text().strip() for f in a.key_file], 20), 0, []
     for r in sample:
         q = qs[r["id"]]
         typ = "abstention" if r["abs"] else r["type"]
