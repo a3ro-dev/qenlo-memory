@@ -16,3 +16,12 @@
 - E2 stage A (locomo only, time_interp): arctic-33m 61.05 vs 22m 58.25 (+2.8); all-minilm 56.18, granite-30m 55.82. dense alone: 33m 52.56, minilm 40.72, granite 40.86 (bm25 rescues the weak ones, as predicted).
 - 2026-11-15 LME-S file = HF longmemeval-cleaned (sha256 match). judge minimax saturated on NIM (1/15 burst ok, both keys): amendment 5, lightning-30b judge (15/15, 1.6 s), step-5 cross-family check. QA restarted, reader answers cached.
 - E2 stage B: arctic-33m memscore 70.10 vs 68.07 (every suite up). passes the default-change rule pending latency/RAM.
+- E2 shipped: arctic-33m default (70.10 vs 68.07 memscore; p50 query embed 40.5 vs 39.4 ms; VRAM 58 vs 37 MB; parity 59.70).
+- E1 0.3 top-10 plain on the 195-q subset: 79.5% (multi-session 11/33, temporal 23/33). oracle partial 82.7% (185 q), stopped for time.
+- akshat: qenlo-memory is a cross-session memory, so multi-session is the category. E6 (k=30 CoT vs 3 sessions CoT) stopped
+  at ~46 q each (82.6 / 79.2 partial) for the final run. E5 not run.
+- E7 final: score-adaptive whole-session readout (sessions within 0.8x of the best, 2-6), LongMemEval CoT reader, batched
+  requests (8 questions per reader call, 25 per judge call), 33m embedder, all 500 questions. no lexical rules (akshat).
+- infra: ollama restarted with OLLAMA_NUM_PARALLEL=8 (GPU 33% -> ~75%), 6 prewarm shards, windows ultimate performance plan.
+- decision models (Jev, Parallel decisions-fast, Laya) looked up and rejected for the memory path: cloud, 250-600 ms, weak on
+  counting and dates by their own docs. Laya is local but is a reranker by another name.
