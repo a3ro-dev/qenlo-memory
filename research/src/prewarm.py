@@ -9,6 +9,8 @@ from qenlo_memory.store import redact  # noqa: E402
 
 texts = list(dict.fromkeys(redact(t["content"].strip()) for q in json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
                            for s in q["haystack_sessions"] for t in s if t["content"].strip()))
+if "--reverse" in sys.argv:  # a second worker from the other end; both share the cache
+    texts.reverse()
 embed, t0 = StoreEmbed(), time.time()
 print(len(texts), "unique turns", flush=True)
 for i in range(0, len(texts), 2000):
