@@ -39,3 +39,15 @@ check through Store.recall. remaining stage B (110m, nomic, embeddinggemma) runn
 query-embed latency under identical GPU load: 22m p50 39.4 / p90 75.8 ms, 33m p50 40.5 / p90 65.2 ms. ollama VRAM 37 ->
 58 MB; the qenlo-memory daemon itself is unchanged. shipped parity through Store.recall on locomo-obs: 59.70 (bench
 60.0). existing stores: the vectors.model marker sees the change, the daemon pulls 33m and re-embeds from sqlite.
+
+## the shipped 33m default on EdgeMem's LongMemEval-S table (470 q, all turns, no LLM)
+
+| | R_all@3 | NDCG@3 | R_all@10 | NDCG@10 | R_any@3 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| EdgeMem (paper) | 81.49 | 90.49 | 93.83 | 92.80 | |
+| 0.4, arctic-33m | 82.77 | 91.44 | 94.89 | 93.81 | 97.23 |
+| 0.3 recipe, arctic-22m | 84.47 | 91.89 | 95.32 | 93.79 | 96.60 |
+
+33m still beats EdgeMem on all four reported numbers, but sits 1.7 below 22m on R_all@3 here, although it wins the locked
+memscore suites (+2.0, lme-s user-turn suite +0.5). on haystacks that include long assistant turns the smaller model
+does slightly better at k=3. reported both ways; the default decision stands on the locked metric.
