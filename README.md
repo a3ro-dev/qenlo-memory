@@ -138,7 +138,7 @@ each kind is stored in qenlo's `user_id` field. qenlo can only filter on `user_i
 
 ### the model
 
-the default is `snowflake-arctic-embed:22m` through ollama. it has 22M parameters and 384 dimensions, it's Apache-2.0, and it takes 39MB of VRAM on my rtx 4050. its model card reports 50.15 NDCG@10 on MTEB retrieval, which is a lot for something that small.
+the default is `snowflake-arctic-embed:33m` through ollama (0.4; it was the 22m before). it has 33M parameters and 384 dimensions, it's Apache-2.0, and it takes 58MB of VRAM on my rtx 4050. on our memory benchmarks it beats the 22m by +2.0 memscore (every suite up) at the same query latency, measured against all twelve models in the library (research/experiments/E2-embedders). if you already use the default, the daemon pulls the new model and re-embeds your memories from sqlite on its next start.
 
 `qenlo-memory models` lists the library: twelve ollama embedding models from 46 MB to 1.2 GB (arctic v1 and v2, nomic, mxbai, bge-m3, embeddinggemma, qwen3-embedding, granite, minilm), with their dimension, size, and the query and document prefixes each one was trained with. `qenlo-memory models use nomic-embed-text` pulls the model, makes it the default, and restarts the daemon, which re-embeds every memory from sqlite into a fresh collection, because two models' vectors don't share a space. any other ollama tag works too, without prefixes. `QENLO_MEMORY_MODEL` still overrides the choice for one shell.
 
