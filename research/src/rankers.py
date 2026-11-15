@@ -259,3 +259,13 @@ def _diverse(ranked, idx, floor=3, window=5):
 
 def episode_div(idx, q, qv):
     return _diverse(episode(idx, q, qv), idx)
+
+
+def episode_boost(idx, q, qv, lam=0.5, top_sessions=3):
+    """E3.2: the session score can lift a turn, never sink it: rho = max(t, lam*t + (1-lam)*s)."""
+    eps, turn, sess = _episodes(idx), _turn_scores(idx, q, qv), _session_scores(idx, q.text)
+    hi = max(turn.values(), default=0) or 1.0
+    cand = set(turn) | {d for n in sorted(sess, key=sess.get, reverse=True)[:top_sessions] for d in eps[n]}
+    t = {d: turn.get(d, 0) / hi for d in cand}
+    rho = {d: max(t[d], lam * t[d] + (1 - lam) * sess.get(_session(idx, d), 0)) for d in cand}
+    return sorted(rho, key=rho.get, reverse=True)

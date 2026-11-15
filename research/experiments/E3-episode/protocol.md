@@ -26,3 +26,12 @@ hypothesis: E3 loses multi-hop because the session score fills the top with one 
 session may take one of the first 5 slots only while enough slots remain to still reach 3 distinct sessions.
 K=3 and the 5-slot window fixed in advance. prediction: c1 (multi-hop) back to >= 0.3's level, memscore >= E3 - 0.5.
 QA gate: ranker:time_interp (0.3) vs ranker:episode / episode_div / episode_nb on the E1 harness.
+
+## E3.2 (locked 2026-11-15, after E3.1, before running it)
+
+hypothesis: E3's multi-hop loss is demotion: a gold turn in a session that is mostly about something else gets a
+low session score, and the 0.5/0.5 mix pulls it under turns from well-matching sessions. if the session score can
+only lift a turn, never sink it, the loss should go. `episode_boost`: rho = max(t, 0.5*t + 0.5*s), same t, s,
+candidates as E3. one variant, no sweep.
+prediction: c1 back to >= 0.3's (obs 36.5, turns 30.9) within 1 point; memscore >= 0.3 + 1.0; locomo-turns keeps
+>= +3 of E3's +6.0; LME-470 R_all@3 >= 0.3's 84.47 - 0.5.
