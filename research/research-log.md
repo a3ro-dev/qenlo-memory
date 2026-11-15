@@ -25,3 +25,5 @@
 - infra: ollama restarted with OLLAMA_NUM_PARALLEL=8 (GPU 33% -> ~75%), 6 prewarm shards, windows ultimate performance plan.
 - decision models (Jev, Parallel decisions-fast, Laya) looked up and rejected for the memory path: cloud, 250-600 ms, weak on
   counting and dates by their own docs. Laya is local but is a reranker by another name.
+- E7 final (500 q, unbatched): 71.6% (ms 48.9, tr 62.4). worse than 0.3 top-10 plain on the shared 195 (71.3 vs 79.5).
+  batched run invalid (answers swapped between tasks). published 71.6 with the subset caveat. 33m LME-470 table beats EdgeMem on all four.

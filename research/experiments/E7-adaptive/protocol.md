@@ -36,3 +36,12 @@ all with recall_all 1.0. this is an attribution error of batching, not a memory 
 qa_dynamic_cot_b8.INVALID.jsonl and reported as a negative result about batching. rerun: identical config, one
 question per reader request and one answer per judge request (the official setup); answers that were already produced
 by single-call fallbacks come from the cache unchanged.
+
+## result (2026-11-15 16:48, all 500, one question per request)
+
+accuracy 71.6 (task avg 76.85, abstention 76.67, errors 0). per type: ku 85.9, ms 48.9, ssa 98.2, ssp 70.0, ssu 95.7,
+tr 62.4. session recall_all of the readout 74.0. prediction (ms >= 60, overall >= 85) **refuted**.
+on the 195 questions shared with the 0.3 top-10 plain run: E7 71.3 vs 79.5, 6 wins / 22 losses (ms 8 vs 11, tr 16 vs
+23, ssp 21 vs 27). whole sessions + CoT lose to 10 turns + plain here. the 0.3 plain run reweighted to the full type
+mix projects to ~71.4 on 500, level with E7. both beat EdgeMem's 60.0 (different reader). confounds: E7 also changed the
+embedder (33m vs 22m) and the prompt (CoT); the subset comparison does not separate them.
