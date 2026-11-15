@@ -1,0 +1,85 @@
+<!doctype html><meta charset=utf-8><title>qenlo-memory research</title>
+<style>body{font:15px/1.5 system-ui,Segoe UI,sans-serif;max-width:900px;margin:32px auto;padding:0 16px;color:#1d1d1f}
+h1{font-size:24px}h2{font-size:18px;margin-top:36px}table{border-collapse:collapse;margin:8px 0}
+td,th{padding:4px 10px;border-bottom:1px solid #ddd;text-align:left}th{background:#f4f4f5}
+.note{color:#666;font-size:13px}.l{font-size:13px}.v{font-size:12px;fill:#444}.b{fill:#9ca3af}.hl{fill:#2563eb}
+pre{white-space:pre-wrap;background:#f8f8f8;padding:12px;font-size:13px}</style>
+<h1>qenlo-memory: toward the best local, LLM-free agent memory</h1>
+<p class=note>generated 2026-11-15 15:18 from research/data. every protocol was committed before its results.</p>
+<h2>retrieval: memscore (mean R@5 of locomo-obs, locomo-turns, lme-s)</h2><svg width="820" height="162"><text x="0" y="17" class=l>0.2 dense</text><rect x="230" y="4" width="148" height="18" class="b"/><text x="384" y="17" class=v>59.84</text><text x="0" y="43" class=l>0.3 shipped</text><rect x="230" y="30" width="400" height="18" class="b"/><text x="636" y="43" class=v>68.07</text><text x="0" y="69" class=l>E3 episode</text><rect x="230" y="56" width="464" height="18" class="b"/><text x="700" y="69" class=v>70.16</text><text x="0" y="95" class=l>E3.1 + diversity floor</text><rect x="230" y="82" width="424" height="18" class="b"/><text x="660" y="95" class=v>68.87</text><text x="0" y="121" class=l>E3.2 episode, lift-only</text><rect x="230" y="108" width="475" height="18" class="hl"/><text x="711" y="121" class=v>70.53</text><text x="0" y="147" class=l>E4 episode + neighbours</text><rect x="230" y="134" width="398" height="18" class="b"/><text x="634" y="147" class=v>68.02</text></svg><h2>LongMemEval-S retrieval vs EdgeMem (470 Qs, all turns, no LLM)</h2><table><tr><th>system</th><th>R@3</th><th>NDCG@3</th><th>R@10</th><th>NDCG@10</th><th>p50</th></tr><tr><td><b>EdgeMem</b> (paper)</td><td>81.49</td><td>90.49</td><td>93.83</td><td>92.80</td><td></td></tr><tr><td>MemGAS (paper)</td><td>78.51</td><td>86.83</td><td>94.47</td><td>89.96</td><td></td></tr><tr><td>dense</td><td>77.87</td><td>87.87</td><td>93.19</td><td>90.77</td><td>0.5 ms</td></tr><tr><td>time_interp</td><td>84.47</td><td>91.89</td><td>95.32</td><td>93.79</td><td>1.1 ms</td></tr><tr><td>episode</td><td>83.40</td><td>92.06</td><td>94.26</td><td>94.15</td><td>15.3 ms</td></tr><tr><td>episode_div</td><td>83.40</td><td>92.06</td><td>94.26</td><td>94.15</td><td>15.3 ms</td></tr><tr><td>episode_boost</td><td>82.98</td><td>91.35</td><td>94.89</td><td>93.75</td><td>11.6 ms</td></tr></table><p class=note>ours: strict recall_all (every gold session in the top k). EdgeMem/MemGAS rows from EdgeMem's Table 4.</p><h2>embedders, stage A (LoCoMo suites only, 0.3 recipe)</h2><table><tr><th>model</th><th>hybrid memscore (2 suites)</th><th>vs default</th><th>dense only</th></tr><tr><td>snowflake-arctic-embed2</td><td>63.14</td><td>+4.89</td><td>57.21</td></tr><tr><td>snowflake-arctic-embed:335m</td><td>61.93</td><td>+3.68</td><td>55.86</td></tr><tr><td>snowflake-arctic-embed:110m</td><td>61.73</td><td>+3.48</td><td>56.43</td></tr><tr><td>snowflake-arctic-embed:33m</td><td>61.05</td><td>+2.80</td><td>52.56</td></tr><tr><td>all-minilm:22m</td><td>56.18</td><td>-2.07</td><td>40.72</td></tr><tr><td>granite-embedding:30m</td><td>55.82</td><td>-2.43</td><td>40.86</td></tr><tr><td>snowflake-arctic-embed:22m (default)</td><td>58.25</td><td>0</td><td>48.22</td></tr></table><h2>LongMemEval-S QA (reader nemotron-3-ultra no-think, judge minimax-m3.1-flash)</h2><table><tr><th>config</th><th>n answered</th><th>accuracy %</th><th>by type</th></tr><tr><td>oracle</td><td>57</td><td>100.0</td><td>ss-user 100</td></tr></table><p class=note>partial runs show what has been answered so far. published (GPT-4o judge): supermemory 85.2, EdgeMem 60.0 (gpt-4o-mini reader).</p>
+<h2>findings.md</h2><pre># findings (2026-10-31)
+
+## what we know
+
+qenlo-memory 0.2 recalled with dense search alone (snowflake-arctic-embed 22M, exact search in qenlo). on three
+locked suites that&#x27;s memscore 59.8. 0.3 recalls with three channels and scores ~68.0, at ~1 ms per recall
+(excluding the query embedding), with no new dependency: sqlite FTS5 was already in the standard library, and the
+time filter runs inside qenlo.
+
+| ranker | locomo-obs R@5 | locomo-turns R@5 | lme-s recall_all@5 | memscore |
+| --- | ---: | ---: | ---: | ---: |
+| dense (0.2) | 51.3 | 45.1 | 83.1 | 59.8 |
+| bm25 alone | 53.5 | 53.2 | 80.4 | 62.4 |
+| hybrid, RRF k=60 | 54.0 | 52.3 | 88.6 | 65.0 |
+| hybrid, min-max score interpolation 50/50 | 58.5 | 57.4 | 87.7 | 67.9 |
+| + bm25 confidence weighting | 58.2 | 57.7 | 87.9 | 67.9 |
+| + time-window channel (= 0.3, `time_interp`) | 58.9 | 57.6 | 87.7 | 68.1 |
+| 0.3 as shipped, through `Store.recall` | 58.7 | | | |
+
+the update test (20 facts that change, 200 distractors, the real Store):
+
+| | new value on top | stale value on top | old version flagged as related on save |
+| --- | ---: | ---: | ---: |
+| append-only (0.2 behaviour) | 40% | **60%** | |
+| `--replaces` (0.3) | **100%** | 0% | 100% |
+
+## patterns
+
+1. **a small embedding model needs a lexical channel.** 22M-parameter embeddings blur names, numbers and versions.
+   bm25 alone matches dense on LoCoMo (the AgentIR result) and loses on LongMemEval; fused, they beat both on
+   every suite. the two channels fail on different queries, which is exactly when fusion pays.
+2. **score interpolation beat RRF here** (+3 to +5 points on LoCoMo, -1 on LongMemEval). RRF throws away how
+   *much* better the top hit is. lower RRF k (10) recovered part of the gap, consistent with that reading.
+   dense-heavy weights (0.65, 0.8) lost on LoCoMo, lexical-heavy (0.35, 0.2) lost on LongMemEval; 0.5 is the
+   robust middle (the &quot;fusion tax&quot; paper&#x27;s warning holds in both directions).
+3. **min-max normalisation is fragile in small stores.** fts5 floors idf at ~1e-6 for words in most rows, and
+   min-max stretches that noise to 1.0. a 3-memory store ranked &quot;the user prefers lower-case prose&quot; above the
+   gpu fact for &quot;what graphics card does the user have&quot;. scaling bm25 by its best score *and* trusting it only up
+   to an absolute score of 1 fixes that with no cost on the big suites (67.94 vs 67.96).
+4. **time words are rare but decisive.** 8% of LoCoMo and 13% of LongMemEval questions name a time. on those,
+   a dense search restricted to the window (qenlo filters timestamps natively) adds +6.1 / +3.9 R@5 on LoCoMo,
+   and nothing on LongMemEval, whose time questions are aggregates (&quot;how many hours last month&quot;).
+5. **recency is not a ranking signal, validity is.** a recency bonus lost 1-4 points on LoCoMo (H4 refuted),
+   while explicit supersession took stale answers from 60% to 0%. what changed matters; what&#x27;s new doesn&#x27;t.
+6. **append-only memory is worse than a coin flip after an update** (60% stale). TEPA reported the same shape
+   (append-only below no-memory). the agent is already the LLM that can decide &quot;this updates #12&quot;, so the store&#x27;s
+   job is to show it the candidates (cosine ≥ 0.82, measured on the user&#x27;s 243 real memories) and to honour the link.
+
+## lessons and constraints
+
+- ollama embeds at 45-100 texts/s on the laptop GPU (sequential per request); the bench caches by model+text,
+  so only the first pass costs (~35 min for LongMemEval-S user turns).
+- ollama 400s a whole batch if one text overflows the context; embed one by one, truncating, on error.
+- don&#x27;t run `uv sync` while a process holds qenlo&#x27;s dll on windows: the venv ends up half-upgraded.
+- the time parser must not fire on &quot;how many weeks ago did i...&quot; (asks for a duration, names no time).
+
+## decided against
+
+- no generative model and no cross-encoder reranker in the memory process. both would buy recall points at the cost
+  of the thing that makes this usable: a few-ms, tens-of-MB memory with one small embedding model.
+- instead, the structuring an LLM would do at write time is done by the agent writing the memory, which already is
+  one: `--key` (slot-key supersession, the part of Fortunate Recall / TEPA that carried most of their gain) and
+  `--replaces`. with keys alone the update suite went 60% stale -&gt; 0% stale.
+
+## real store (the user&#x27;s 243 memories, read-only copy)
+
+- migration from 0.2: schema columns added and fts index built from sqlite in 0.5 s, no re-embedding.
+- 10 natural questions about the user&#x27;s projects: old dense recall already had the right #1 on 9; 0.3 fixed the
+  10th and cleaned up slot 3 on a few. at this size, ranking is not the pain; stale duplicates are.
+- `review` found 31 groups of same-subject memories, e.g. a release called &quot;not merged to prod&quot; and later
+  &quot;deployed to prod&quot;. that is the append-only failure H5 measured, sitting in a real store.
+
+## open questions
+- LongMemEval multi-session (84%) and temporal (80%) are the weakest categories; both want aggregation across
+  sessions, which is a reading problem more than a retrieval one.
+</pre>
