@@ -8,13 +8,15 @@ metrics:
 llm_in_eval_only:
   provider: NVIDIA NIM free tier (rate limited ~40 req/min/key)
   reader: nvidia/nemotron-3-ultra-550b-a55b, thinking off
-  judge: minimaxai/minimax-m3.1-flash (amendment 3)
-embedder: snowflake-arctic-embed:22m (ollama), qenlo 0.1.0b2
+  judge: nvidia/nemotron-3.5-lightning-30b-a3b (amendment 5); cross-family check step-5-preview
+embedder: snowflake-arctic-embed:33m from 0.4 (was 22m; E2), qenlo 0.1.0b2
 baseline_0.3: {memscore: 68.07}
 experiments:
-  E1-qa-harness: {status: running, note: "oracle run in progress; 0.3 and E3 QA next"}
-  E2-embedders: {status: protocol locked, note: "models downloading"}
+  E1-qa-harness: {status: done, note: "0.3 top-10 plain: 79.5% on the 195-q subset; oracle partial 82.7% (185 q, stopped for time)"}
+  E2-embedders: {status: shipped, note: "arctic-33m default: 70.10 vs 68.07 memscore, same latency; stage B for 110m/nomic/gemma stopped for time"}
   E3-episode: {status: supported on memscore (70.16, +2.09), qa gate pending, note: "multi-hop and lme preference down"}
   E3.1-diversity: {status: refuted, note: "68.87; multi-hop loss is session-score demotion, not crowding"}
   E4-neighbours: {status: memscore down as predicted (68.02), judged in QA}
-next: [E1 oracle, QA 0.3 vs E3 vs E4, edgemem table, judge check, E2 stage A]
+  E5-context-budget: {status: not run (final hour went to E6)}
+  E6-best-config: {status: running, note: "k=30 CoT vs 3 whole sessions CoT on 195 q; winner on 500"}
+next: [E6 decision, final 500 run, judge check, 33m retrieval table, report, README, 0.4.0]
