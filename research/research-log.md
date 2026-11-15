@@ -12,3 +12,5 @@
 - E3 episode: memscore 68.07 -> 70.16 (locomo-turns +6.0), multi-hop and lme preference down. E4 neighbour readout costs R@5 (expected). E3 goes to the QA gate.
 - E3.1 diversity floor refuted (68.87 < 70.16, c1 not recovered): the multi-hop loss is session-score demotion, not crowding.
 - LME-S 470 (EdgeMem's table, no LLM): 0.3 R_all@3 84.47 / NDCG@3 91.89 / R_all@10 95.32 / NDCG@10 93.79 vs EdgeMem 81.49/90.49/93.83/92.80. we already beat the LLM-free bar on retrieval. E3: NDCG up, R_all down 1.
+- E3.2 episode_boost: memscore 70.53 (best), lme preference recovered, LME-470 R_all@3 82.98 (-1.5 vs 0.3). episode family trades LME session recall for LoCoMo turn recall; QA gate decides.
+- E2 stage A (locomo only, time_interp): arctic-33m 61.05 vs 22m 58.25 (+2.8); all-minilm 56.18, granite-30m 55.82. dense alone: 33m 52.56, minilm 40.72, granite 40.86 (bm25 rescues the weak ones, as predicted).

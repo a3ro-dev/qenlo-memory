@@ -44,3 +44,12 @@ only boosts (max(turn, mix)) rather than replaces. not tuned on the test set yet
 - E3 at session level: NDCG up, R_all down ~1 (spread-evidence questions again). episode_div is identical at the
   session level by construction (it only reorders turns within already-seen sessions).
 - episode costs 15 ms here (sessions with long assistant turns in the session fts table) vs 1.2 ms.
+
+## E3.2 episode_boost (confirmatory, protocol b890519): best memscore, mechanism half-confirmed
+
+memscore 70.53 (obs 60.4, turns 63.6, lme-s 87.7): +2.46 over 0.3, +0.37 over E3. predictions: memscore >= 69.07 yes;
+turns keeps >= +3 yes (+6.0); c1 within 1 of 0.3: turns 30.1 vs 30.9 yes, obs 34.4 vs 36.5 no; LME-470 R_all@3 >= 83.97
+no (82.98; NDCG@10 93.75 vs 0.3's 93.79). lme-s preference back to 93.3 (E3 had 86.7).
+reading: the max form removes most of the demotion (preference fully, turns c1 mostly) but on LongMemEval's
+all-turns haystacks any session prior still costs ~1.5 strict session recall at k=3. the episode family trades LME
+session recall for LoCoMo turn recall. QA decides; a memory that ships must not lose LongMemEval.
