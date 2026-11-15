@@ -14,6 +14,7 @@ import collections
 import concurrent.futures as cf
 import hashlib
 import json
+import re
 import sqlite3
 import statistics
 import sys
@@ -39,6 +40,9 @@ READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3.5-lightn
 # the reader runs with thinking off: a big model answering directly, the role GPT-4o plays in published setups
 NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 TOPK = 10
+# E7: questions whose answer is spread over many mentions (counts, totals, lists). a fixed lexical rule, no model
+AGGREGATE = re.compile(r"\b(how many|how much|in total|total|altogether|combined|how often|number of|times (did|have|do)|"
+                       r"all (the|of)|list|every|each|sum|average)\b", re.I)
 
 READ = ("I will give you several history chats between you and a user. Please answer the question based on the "
         "relevant chat history.\n\n\nHistory Chats:\n\n{}\n\nCurrent Date: {}\nQuestion: {}\nAnswer:")
@@ -158,6 +162,11 @@ def retrieve(q: dict, config: str, embed) -> tuple[list, dict]:
         return [(w, [(t["role"], t["content"]) for t in s]) for sid, w, s in sess if sid in gold], {"recall_any": 1.0, "recall_all": 1.0}
     if config.startswith("ranker:"):  # any bench ranker over the all-turns index (lme_retrieval.py's haystack)
         return _ranked(q, config.split(":", 1)[1], embed, gold)
+    if config.startswith("adaptive:"):  # E7: counting/aggregation questions get whole sessions, the rest top-k turns
+        _, name, n = config.split(":")
+        if AGGREGATE.search(q["question"]):
+            return _ranked(q, name, embed, gold, sessions=int(n))
+        return _ranked(q, name, embed, gold)
     if config.startswith("sessions:"):  # sessions:<ranker>:<n> = the n best sessions (by their best turn), whole
         _, name, n = config.split(":")
         return _ranked(q, name, embed, gold, sessions=int(n))
