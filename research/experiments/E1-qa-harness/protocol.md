@@ -16,3 +16,11 @@ with the LLM only in the benchmark, never in qenlo-memory.
 - report: accuracy overall and per type, next to published numbers labelled "different reader/judge".
 - gate for later experiments: the memscore rule (>= +1.0, no suite < -1.0) and QA must not drop by > 1 point.
 - prediction: (b) beats (a) by 3-8 points; (b) stays well below (c) on multi-session and temporal-reasoning.
+
+## amendment 1 (2026-11-15, before any result counted)
+
+- reader: `google/gemma-4-31b-it` (no hidden reasoning), not `minimaxai/minimax-m3.1-flash`. the smoke run showed minimax
+  is a reasoning model (~450 hidden tokens on a small prompt) that ran out of the 500-token answer budget. a
+  reasoning reader would also flatter the memory next to published GPT-4o-reader numbers. approved by akshat.
+- judge unchanged (`nvidia/nemotron-3-ultra-550b-a55b`, 2,048-token budget for its reasoning).
+- 12 worker threads (gemma-4 takes ~45 s per call on NIM); the shared pacer still caps requests at 35/min.
