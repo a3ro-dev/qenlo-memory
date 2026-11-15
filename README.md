@@ -1,5 +1,7 @@
 # qenlo-memory
 
+**[a3ro-dev.github.io/qenlo-memory](https://a3ro-dev.github.io/qenlo-memory/)**, the whole thing explained with live 3D, by Akshat Singh Kushwaha ([a3ro-dev](https://github.com/a3ro-dev)).
+
 ![one memory, every agent: agent names in ascii streaming into one shaded sphere](docs/img/one-memory.png)
 
 i use claude code, codex, cursor, antigravity, gemini cli and copilot. each one starts every session knowing nothing, and none of them knows what the others figured out an hour ago. so the same release steps, the same preferences and the same "no, we tried that" get explained again, once per agent.
@@ -230,6 +232,10 @@ qenlo was alpha when this started, and this project ran into three of its edges.
 - secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.
 - there's no consolidation, reranker or llm in the loop. updates are linked by the agent, not detected by the store; the store only points at the likely candidates.
 
+## the site
+
+`site/` is the launch site, a Vite + Solid page whose dithered art (the 3D memory sphere, the charts, the consoles) is drawn live by [dither-ui](https://github.com/drvova/dither-ui) (MIT, by Sasha Fortel), copied into `site/src/dither-kit` with its license. `cd site && npm ci && npm run dev` runs it; pushing to main deploys it to GitHub Pages.
+
 ## license
 
-Apache-2.0, same as qenlo.
+Apache-2.0, same as qenlo. made by Akshat Singh Kushwaha.
