@@ -35,7 +35,9 @@ from bench import DATA  # noqa: E402
 from qenlo_memory.store import Store, redact  # noqa: E402
 
 URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-READER, JUDGE = "google/gemma-4-31b-it", "nvidia/nemotron-3-ultra-550b-a55b"
+READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "google/gemma-4-31b-it"
+# the reader runs with thinking off: a big model answering directly, the role GPT-4o plays in published setups
+NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 TOPK = 10
 
 READ = ("I will give you several history chats between you and a user. Please answer the question based on the "
@@ -82,14 +84,15 @@ class LLM:
             self.next = max(now, self.next) + self.gap + extra
         time.sleep(wait)
 
-    def __call__(self, model: str, prompt: str, max_tokens: int) -> str:
-        k = hashlib.sha1(f"{model}\0{max_tokens}\0{prompt}".encode()).digest()
+    def __call__(self, model: str, prompt: str, max_tokens: int, extra: dict | None = None) -> str:
+        extra = extra or {}
+        k = hashlib.sha1(f"{model}\0{max_tokens}\0{json.dumps(extra, sort_keys=True)}\0{prompt}".encode()).digest()
         with self.dbl:
             row = self.db.execute("SELECT out FROM c WHERE k = ?", (k,)).fetchone()
         if row:
             return row[0]
         body = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}],
-                           "max_tokens": max_tokens, "temperature": 0}).encode()
+                           "max_tokens": max_tokens, "temperature": 0, **extra}).encode()
         for attempt in range(8):
             self._pace()
             try:
@@ -100,6 +103,9 @@ class LLM:
                 if got != model:  # a substituted model would mix scores: retry, never count
                     raise RuntimeError(f"asked {model}, got {got}")
                 out = d["choices"][0]["message"].get("content") or ""
+                thought = ((d.get("usage") or {}).get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+                if extra.get("chat_template_kwargs", {}).get("enable_thinking") is False and thought:
+                    raise RuntimeError(f"thinking was off but {thought} reasoning tokens came back")
                 if not out.strip():
                     raise RuntimeError("empty content (reasoning ran out of tokens?)")
                 with self.dbl:
@@ -191,7 +197,7 @@ def main():
     def answer(item):
         q, prompt, stats = item
         try:
-            hyp = llm(READER, prompt, 500)
+            hyp = llm(READER, prompt, 500, NO_THINK)
             typ = "abstention" if q["question_id"].endswith("_abs") else q["question_type"]
             verdict = llm(JUDGE, JUDGE_PROMPTS[typ].format(q["question"], q["answer"], hyp), 2048)
             ok = "yes" in verdict.lower()  # the official rule, evaluate_qa.py
