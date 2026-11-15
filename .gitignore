@@ -8,3 +8,5 @@ research/data/embcache.sqlite
 research/data/*.log
 research/data/embcache.sqlite-journal
 shots/
+research/data/llmcache.sqlite
+research/data/llmcache.sqlite-journal
