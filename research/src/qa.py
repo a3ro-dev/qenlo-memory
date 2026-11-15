@@ -42,6 +42,11 @@ TOPK = 10
 
 READ = ("I will give you several history chats between you and a user. Please answer the question based on the "
         "relevant chat history.\n\n\nHistory Chats:\n\n{}\n\nCurrent Date: {}\nQuestion: {}\nAnswer:")
+# LongMemEval's own --cot reader template (run_generation.py), verbatim; their generation budget for it is 800 tokens
+READ_COT = ("I will give you several history chats between you and a user. Please answer the question based on the "
+            "relevant chat history. Answer the question step by step: first extract all the relevant information, and "
+            "then reason over the information to get the answer.\n\n\nHistory Chats:\n\n{}\n\nCurrent Date: {}\n"
+            "Question: {}\nAnswer (step by step):")
 _TAIL = "\n\nQuestion: {}\n\nCorrect Answer: {}\n\nModel Response: {}\n\nIs the model response correct? Answer yes or no only."
 _BASE = ("I will give you a question, a correct answer, and a response from a model. Please answer yes if the response "
          "contains the correct answer. Otherwise, answer no. If the response is equivalent to the correct answer or "
@@ -213,6 +218,7 @@ def main():
     ap.add_argument("--key-file", required=True, action="append", help="repeat for more keys; each gets its own pacer")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--rpm", type=float, default=20)  # per key; NIM 429s the judge at ~35/min on one key
+    ap.add_argument("--cot", action="store_true", help="LongMemEval's step-by-step reader prompt (800-token budget)")
     ap.add_argument("--topk", type=int, default=TOPK, help="turns handed to the reader (ranker: and hybrid/dense configs)")
     ap.add_argument("--workers", type=int, default=48)  # calls take up to ~100 s (550B reader, long contexts); the pacers cap rpm
     a = ap.parse_args()
@@ -222,13 +228,14 @@ def main():
         data = [q for q in data if (seen.update([q["question_type"]]) or seen[q["question_type"]] <= per)]
     llm, embed = LLM([Path(f).read_text().strip() for f in a.key_file], a.rpm), StoreEmbed()
     TOPK = a.topk
-    out_path = DATA / f"qa_{a.config.replace(':', '-')}{'' if TOPK == 10 else f'_k{TOPK}'}.jsonl"
+    out_path = DATA / f"qa_{a.config.replace(':', '-')}{'' if TOPK == 10 else f'_k{TOPK}'}{'_cot' if a.cot else ''}.jsonl"
+    template, budget = (READ_COT, 800) if a.cot else (READ, 500)
 
     t0 = time.time()
     prepared = []
     for n, q in enumerate(data):  # retrieval in the main thread: ollama embeds one request at a time anyway
         chunks, stats = retrieve(q, a.config, embed)
-        prompt = READ.format(history(chunks), q["question_date"], q["question"])
+        prompt = template.format(history(chunks), q["question_date"], q["question"])
         prepared.append((q, prompt, {**stats, "ctx_chars": len(prompt)}))
         if n % 25 == 0:
             print(f"retrieved {n + 1}/{len(data)}  {time.time() - t0:.0f}s", flush=True)
@@ -236,7 +243,7 @@ def main():
     def answer(item):
         q, prompt, stats = item
         try:
-            hyp = llm(READER, prompt, 500, NO_THINK)
+            hyp = llm(READER, prompt, budget, NO_THINK)
             typ = "abstention" if q["question_id"].endswith("_abs") else q["question_type"]
             verdict = llm(JUDGE, JUDGE_PROMPTS[typ].format(q["question"], q["answer"], hyp), 4096)
             ok = "yes" in verdict.lower()  # the official rule, evaluate_qa.py
