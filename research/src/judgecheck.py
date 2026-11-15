@@ -1,4 +1,4 @@
-"""E1 amendment 2: re-judge 50 random answers with a second judge (nemotron-ultra, thinking on) and report agreement.
+"""E1 amendments 2 and 5: re-judge 50 random answers with a cross-family second judge (step-5-preview) and report agreement.
 
 usage: python -I research/src/judgecheck.py <config> --key-file F
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I leaves the script's folder off sys.path
 from qa import DATA, JUDGE_PROMPTS, LLM, RAW
 
-SECOND = "nvidia/nemotron-3-ultra-550b-a55b"
+SECOND = "stepfun-ai/step-5-preview"  # a different family from both the reader and the judge
 
 
 def main():
