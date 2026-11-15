@@ -171,3 +171,74 @@ def interp_lexconf(idx, q, qv):
     d, l = _norm(idx.dense(qv)), {i: s / hi * min(1.0, hi) for i, s in lex} if hi > 0 else {}
     s = {i: 0.5 * d.get(i, 0) + 0.5 * l.get(i, 0) for i in d.keys() | l.keys()}
     return sorted(s, key=s.get, reverse=True)
+
+
+# --- E3/E4 (from EdgeMem, arXiv:2609.05553): episode context + neighbour readout ---
+def _session(idx, d):
+    u = idx.h.unit[d][0] if idx.h.unit[d] else str(d)
+    return u.split(":")[0] if ":" in u else u  # locomo "D3:5" -> "D3"; lme session ids as they are
+
+
+def _episodes(idx):
+    """lazily: session -> its docs in time order, and an fts5 table over each session's concatenated text."""
+    if not hasattr(idx, "_eps"):
+        import sqlite3
+        eps = {}
+        for d in sorted(idx.text, key=lambda d: (idx.created[d], d)):
+            eps.setdefault(_session(idx, d), []).append(d)
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE VIRTUAL TABLE s USING fts5(name UNINDEXED, text, tokenize='porter unicode61')")
+        db.executemany("INSERT INTO s(name, text) VALUES (?, ?)", [(n, " ".join(idx.text[d] for d in ds)) for n, ds in eps.items()])
+        idx._eps, idx._sdb = eps, db
+    return idx._eps
+
+
+def _session_scores(idx, query, k=20):
+    _episodes(idx)
+    match = fts_query(query)
+    if not match:
+        return {}
+    rows = idx._sdb.execute("SELECT name, -bm25(s) FROM s WHERE s MATCH ? ORDER BY bm25(s) LIMIT ?", (match, k)).fetchall()
+    hi = max((v for _, v in rows), default=0)
+    return {n: v / hi for n, v in rows} if hi > 0 else {}  # max-normalised, as EdgeMem does
+
+
+def _turn_scores(idx, q, qv):
+    """the shipped 0.3 fusion, as scores."""
+    d, l = _norm(idx.dense(qv)), _norm(idx.lexical(q.text))
+    w = time_window(q.text, q.when)
+    t = _norm(idx.dense(qv, k=20, lo=w[0], hi=w[1])) if w else {}
+    return {i: 0.5 * d.get(i, 0) + 0.5 * l.get(i, 0) + 0.25 * t.get(i, 0) for i in d.keys() | l.keys() | t.keys()}
+
+
+def episode(idx, q, qv, lam=0.5, top_sessions=3):
+    """rho(t) = lam * turn score + (1 - lam) * session score. the turns of the best sessions join the candidates,
+    so a session that matches as a whole can surface a turn no channel found on its own."""
+    eps, turn, sess = _episodes(idx), _turn_scores(idx, q, qv), _session_scores(idx, q.text)
+    hi = max(turn.values(), default=0) or 1.0
+    cand = set(turn) | {d for n in sorted(sess, key=sess.get, reverse=True)[:top_sessions] for d in eps[n]}
+    rho = {d: lam * turn.get(d, 0) / hi + (1 - lam) * sess.get(_session(idx, d), 0) for d in cand}
+    return sorted(rho, key=rho.get, reverse=True)
+
+
+def _with_neighbours(ranked, idx, k=50):
+    """each seed followed by the turn before and after it in its session, deduplicated (EdgeMem's readout)."""
+    eps, out, seen = _episodes(idx), [], set()
+    pos = {d: (n, i) for n, ds in eps.items() for i, d in enumerate(ds)}
+    for d in ranked:
+        n, i = pos[d]
+        for x in (d, *(eps[n][j] for j in (i - 1, i + 1) if 0 <= j < len(eps[n]))):
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
+        if len(out) >= k:
+            break
+    return out
+
+
+def episode_nb(idx, q, qv):
+    return _with_neighbours(episode(idx, q, qv), idx)
+
+
+def time_interp_nb(idx, q, qv):
+    return _with_neighbours(time_interp(idx, q, qv), idx)
