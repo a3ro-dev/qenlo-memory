@@ -9,6 +9,10 @@ from qenlo_memory.store import redact  # noqa: E402
 
 texts = list(dict.fromkeys(redact(t["content"].strip()) for q in json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
                            for s in q["haystack_sessions"] for t in s if t["content"].strip()))
+for a in sys.argv[1:]:  # --shard i/n: this worker takes every n-th text, starting at i
+    if a.startswith("--shard="):
+        i, n = map(int, a.split("=")[1].split("/"))
+        texts = texts[i::n]
 if "--reverse" in sys.argv:  # a second worker from the other end; both share the cache
     texts.reverse()
 embed, t0 = StoreEmbed(), time.time()
