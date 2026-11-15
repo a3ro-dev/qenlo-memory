@@ -26,3 +26,21 @@ turns 28.4; 0.3 had 36.5 / 30.9). so the c1 loss is not one session crowding the
 evidence lives in sessions that are mostly about something else, so their *session* bm25 is low and the 0.5 session
 weight demotes the gold turn itself. that predicts a fix through a lower session weight or a session score that
 only boosts (max(turn, mix)) rather than replaces. not tuned on the test set yet: next protocol if E3 passes QA.
+
+## EdgeMem's LongMemEval-S table (confirmatory, lme_retrieval.py, 470 questions, all turns, no LLM)
+
+| ranker | R_all@3 | NDCG@3 | R_all@10 | NDCG@10 | R_any@3 | p50 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| EdgeMem (paper Table 4, "R") | 81.49 | 90.49 | 93.83 | 92.80 | | |
+| MemGAS (paper Table 4) | 78.51 | 86.83 | 94.47 | 89.96 | | |
+| dense (0.2) | 77.87 | 87.87 | 93.19 | 90.77 | 95.32 | 0.5 ms |
+| time_interp (0.3 shipped) | **84.47** | 91.89 | **95.32** | 93.79 | 96.60 | 1.2 ms |
+| episode (E3) | 83.40 | **92.06** | 94.26 | **94.15** | 96.81 | 15 ms |
+
+- 0.3 beats EdgeMem's retrieval on all four reported numbers, with our strict recall_all; under recall_any the gap
+  is wider (96.6 at k=3). EdgeMem's "R" is not defined beyond "Recall"; we report both so neither reading flatters us.
+- caveats: EdgeMem used the 2025-09 cleaned LongMemEval release; ours is the file in data/raw (see survey.md).
+  ranking unit differs: EdgeMem ranks turns into an evidence pack; we rank sessions by their best turn.
+- E3 at session level: NDCG up, R_all down ~1 (spread-evidence questions again). episode_div is identical at the
+  session level by construction (it only reorders turns within already-seen sessions).
+- episode costs 15 ms here (sessions with long assistant turns in the session fts table) vs 1.2 ms.
