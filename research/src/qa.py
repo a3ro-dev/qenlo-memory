@@ -40,9 +40,7 @@ READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3.5-lightn
 # the reader runs with thinking off: a big model answering directly, the role GPT-4o plays in published setups
 NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 TOPK = 10
-# E7: questions whose answer is spread over many mentions (counts, totals, lists). a fixed lexical rule, no model
-AGGREGATE = re.compile(r"\b(how many|how much|in total|total|altogether|combined|how often|number of|times (did|have|do)|"
-                       r"all (the|of)|list|every|each|sum|average)\b", re.I)
+SPREAD, MIN_S, MAX_S = 0.8, 2, 6  # E7, fixed before the run, not tuned
 
 READ = ("I will give you several history chats between you and a user. Please answer the question based on the "
         "relevant chat history.\n\n\nHistory Chats:\n\n{}\n\nCurrent Date: {}\nQuestion: {}\nAnswer:")
@@ -162,11 +160,8 @@ def retrieve(q: dict, config: str, embed) -> tuple[list, dict]:
         return [(w, [(t["role"], t["content"]) for t in s]) for sid, w, s in sess if sid in gold], {"recall_any": 1.0, "recall_all": 1.0}
     if config.startswith("ranker:"):  # any bench ranker over the all-turns index (lme_retrieval.py's haystack)
         return _ranked(q, config.split(":", 1)[1], embed, gold)
-    if config.startswith("adaptive:"):  # E7: counting/aggregation questions get whole sessions, the rest top-k turns
-        _, name, n = config.split(":")
-        if AGGREGATE.search(q["question"]):
-            return _ranked(q, name, embed, gold, sessions=int(n))
-        return _ranked(q, name, embed, gold)
+    if config == "dynamic":  # E7: the fused retrieval scores decide how many whole sessions the reader gets
+        return _ranked(q, "time_interp", embed, gold, sessions=-1)
     if config.startswith("sessions:"):  # sessions:<ranker>:<n> = the n best sessions (by their best turn), whole
         _, name, n = config.split(":")
         return _ranked(q, name, embed, gold, sessions=int(n))
@@ -205,9 +200,26 @@ def _ranked(q: dict, name: str, embed, gold: set, sessions: int = 0) -> tuple[li
     h = lme_all_one(q)
     idx = Index(h, embed)
     qq = h.queries[0]
-    ranked = getattr(rankers, name)(idx, qq, embed([qq.text], query=True)[0])
+    qv = embed([qq.text], query=True)[0]
+    ranked = getattr(rankers, name)(idx, qq, qv)
     role = h.role
-    if sessions:
+    if sessions < 0:
+        # score-adaptive: every session whose best turn scores >= SPREAD x the best session gets read whole, between
+        # MIN_S and MAX_S of them. evidence spread over many sessions (counts, totals) lifts many sessions close to the
+        # top; a single-fact question has one clear winner. the scores are the 0.3 fusion of dense, bm25 and time.
+        score = rankers._turn_scores(idx, qq, qv)
+        best_of = {}
+        for d, v in score.items():
+            u = h.unit[d][0]
+            best_of[u] = max(best_of.get(u, 0.0), v)
+        order = sorted(best_of, key=best_of.get, reverse=True)
+        top = best_of[order[0]] if order else 0.0
+        sessions = min(MAX_S, max(MIN_S, sum(1 for u in order if best_of[u] >= SPREAD * top)))
+        best = order[:sessions]
+        docs = {s_: sorted((d for d in idx.text if h.unit[d][0] == s_), key=idx.created.get) for s_ in best}
+        chunks = [(idx.created[ds[0]], [(role[d], idx.text[d]) for d in ds]) for ds in docs.values()]
+        found = set(best)
+    elif sessions:
         best = list(dict.fromkeys(h.unit[d][0] for d in ranked))[:sessions]
         docs = {s: sorted((d for d in idx.text if h.unit[d][0] == s), key=idx.created.get) for s in best}
         chunks = [(idx.created[ds[0]], [(role[d], idx.text[d]) for d in ds]) for ds in docs.values()]
@@ -220,6 +232,13 @@ def _ranked(q: dict, name: str, embed, gold: set, sessions: int = 0) -> tuple[li
     return chunks, {"recall_any": float(bool(gold & found)), "recall_all": float(gold <= found) if gold else 1.0}
 
 
+def _safe(fn, *args):
+    try:
+        return fn(*args)
+    except Exception as e:
+        return e
+
+
 def main():
     global TOPK
     ap = argparse.ArgumentParser()
@@ -229,6 +248,8 @@ def main():
     ap.add_argument("--rpm", type=float, default=20)  # per key; NIM 429s the judge at ~35/min on one key
     ap.add_argument("--cot", action="store_true", help="LongMemEval's step-by-step reader prompt (800-token budget)")
     ap.add_argument("--topk", type=int, default=TOPK, help="turns handed to the reader (ranker: and hybrid/dense configs)")
+    ap.add_argument("--batch-read", type=int, default=1, help="questions per reader request (1 = official, one each)")
+    ap.add_argument("--batch-judge", type=int, default=0, help="grade this many answers per judge request (0 = official, one each)")
     ap.add_argument("--workers", type=int, default=48)  # calls take up to ~100 s (550B reader, long contexts); the pacers cap rpm
     a = ap.parse_args()
     data = json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
@@ -237,7 +258,7 @@ def main():
         data = [q for q in data if (seen.update([q["question_type"]]) or seen[q["question_type"]] <= per)]
     llm, embed = LLM([Path(f).read_text().strip() for f in a.key_file], a.rpm), StoreEmbed()
     TOPK = a.topk
-    out_path = DATA / f"qa_{a.config.replace(':', '-')}{'' if TOPK == 10 else f'_k{TOPK}'}{'_cot' if a.cot else ''}.jsonl"
+    out_path = DATA / f"qa_{a.config.replace(':', '-')}{'' if TOPK == 10 else f'_k{TOPK}'}{'_cot' if a.cot else ''}{f'_b{a.batch_read}' if a.batch_read > 1 else ''}.jsonl"
     template, budget = (READ_COT, 800) if a.cot else (READ, 500)
 
     t0 = time.time()
@@ -249,26 +270,72 @@ def main():
         if n % 25 == 0:
             print(f"retrieved {n + 1}/{len(data)}  {time.time() - t0:.0f}s", flush=True)
 
-    def answer(item):
+    def judge_prompt(q, hyp):
+        typ = "abstention" if q["question_id"].endswith("_abs") else q["question_type"]
+        return typ, JUDGE_PROMPTS[typ].format(q["question"], q["answer"], hyp)
+
+    def read(item):  # phase 1: one reader call per question (contexts never share a request)
         q, prompt, stats = item
         try:
-            hyp = llm(READER, prompt, budget, NO_THINK)
-            typ = "abstention" if q["question_id"].endswith("_abs") else q["question_type"]
-            verdict = llm(JUDGE, JUDGE_PROMPTS[typ].format(q["question"], q["answer"], hyp), 4096)
-            ok = "yes" in verdict.lower()  # the official rule, evaluate_qa.py
-            return {"id": q["question_id"], "type": q["question_type"], "abs": typ == "abstention", "ok": ok,
-                    "hyp": hyp, "verdict": verdict[-200:], **stats, "reader": READER, "judge": JUDGE}
-        except Exception as e:  # reported, never counted as right or wrong
-            return {"id": q["question_id"], "type": q["question_type"], "error": str(e)[:200]}
+            return llm(READER, prompt, budget, NO_THINK)
+        except Exception as e:
+            return e
+
+    def read_batch(items):  # several questions per request, each with its own full, verbatim reader prompt
+        if len(items) == 1:
+            return [read(items[0])]
+        body = ("You will answer several separate tasks. Each task has its own chat history, current date and question; "
+                "use only that task's history for that task.\n\n")
+        body += "".join(f"=== Task {i + 1} ===\n{prompt}\n\n" for i, (_, prompt, _) in enumerate(items))
+        body += "Answer every task in order. Begin each answer on its own line with `### Answer <task number>`."
+        out = llm(READER, body, budget * len(items), NO_THINK)
+        parts = re.split(r"^\s*#+\s*Answer\s+(\d+)\s*:?\s*$", out, flags=re.M)
+        got = {int(parts[i]): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2) if parts[i + 1].strip()}
+        return [got[i + 1] if i + 1 in got else read(it) for i, it in enumerate(items)]  # unparsed -> single call
+
+    groups = [prepared[i:i + max(1, a.batch_read)] for i in range(0, len(prepared), max(1, a.batch_read))]
+    hyps = []
+    with cf.ThreadPoolExecutor(a.workers) as ex:
+        for n, hs in enumerate(ex.map(lambda g: _safe(read_batch, g), groups)):
+            hyps += hs if not isinstance(hs, Exception) else [hs] * len(groups[n])
+            print(f"read {len(hyps)}/{len(prepared)}  {time.time() - t0:.0f}s  calls {llm.calls}", flush=True)
+
+    def judge_one(q, hyp):
+        return "yes" in llm(JUDGE, judge_prompt(q, hyp)[1], 4096).lower()  # the official rule, evaluate_qa.py
+
+    def judge_batch(items):  # phase 2: the per-item official prompts, numbered, several per request
+        if len(items) == 1 or a.batch_judge <= 1:
+            return [judge_one(q, h) for q, h in items]
+        body = "You will grade several separate items. Each item has its own instructions; follow them for that item only.\n\n"
+        body += "".join(f"### Item {i + 1}\n{judge_prompt(q, h)[1]}\n\n" for i, (q, h) in enumerate(items))
+        body += f"Reply with exactly {len(items)} lines, one per item in order, formatted `<item number>: yes` or `<item number>: no`, and nothing else."
+        got = {int(m.group(1)): m.group(2).lower() == "yes"
+               for m in re.finditer(r"^\s*\**\s*(\d+)\s*\**\s*:\s*\**\s*(yes|no)\b", llm(JUDGE, body, 16384), re.M | re.I)}
+        # anything the batch reply did not cover gets the official single-item call
+        return [got[i + 1] if i + 1 in got else judge_one(q, h) for i, (q, h) in enumerate(items)]
+
+    todo = [(i, item[0], h) for i, (item, h) in enumerate(zip(prepared, hyps)) if not isinstance(h, Exception)]
+    size = max(1, a.batch_judge)
+    batches = [todo[i:i + size] for i in range(0, len(todo), size)]
+    verdicts = {}
+    with cf.ThreadPoolExecutor(a.workers) as ex:
+        for b, vs in zip(batches, ex.map(lambda b: _safe(judge_batch, [(q, h) for _, q, h in b]), batches)):
+            for (i, _, _), v in zip(b, vs if not isinstance(vs, Exception) else [vs] * len(b)):
+                verdicts[i] = v
+    print(f"judged {len(verdicts)}  {time.time() - t0:.0f}s  calls {llm.calls}", flush=True)
 
     rows = []
-    with cf.ThreadPoolExecutor(a.workers) as ex, out_path.open("w", encoding="utf-8") as f:
-        for n, r in enumerate(ex.map(answer, prepared)):
+    with out_path.open("w", encoding="utf-8") as f:
+        for i, ((q, prompt, stats), h) in enumerate(zip(prepared, hyps)):
+            v = verdicts.get(i)
+            if isinstance(h, Exception) or isinstance(v, Exception) or v is None:  # reported, never counted
+                r = {"id": q["question_id"], "type": q["question_type"], "error": str(h if isinstance(h, Exception) else v)[:200]}
+            else:
+                typ = judge_prompt(q, h)[0]
+                r = {"id": q["question_id"], "type": q["question_type"], "abs": typ == "abstention", "ok": v, "hyp": h,
+                     **stats, "reader": READER, "judge": JUDGE, "batch_read": a.batch_read, "batch_judge": a.batch_judge}
             rows.append(r)
             f.write(json.dumps(r) + "\n")
-            f.flush()
-            if n % 25 == 0:
-                print(f"answered {n + 1}/{len(prepared)}  {time.time() - t0:.0f}s  calls {llm.calls}", flush=True)
 
     good = [r for r in rows if "error" not in r]
     by = collections.defaultdict(list)
