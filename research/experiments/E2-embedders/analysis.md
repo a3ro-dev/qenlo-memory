@@ -33,3 +33,9 @@ lme-s recall_all@5 88.2 (22m: 87.7). full memscore = mean(60.0, 62.1, 88.2) = **
 +2.03, every suite up (+1.1 / +4.5 / +0.5). meets the default-change rule (67 MB <= ~70 MB, >= +1.0, no suite down).
 before the switch: query-embed latency and daemon RAM vs 22m (measured with the GPU idle), and the product parity
 check through Store.recall. remaining stage B (110m, nomic, embeddinggemma) running.
+
+## decision: arctic-33m becomes the default (0.4)
+
+query-embed latency under identical GPU load: 22m p50 39.4 / p90 75.8 ms, 33m p50 40.5 / p90 65.2 ms. ollama VRAM 37 ->
+58 MB; the qenlo-memory daemon itself is unchanged. shipped parity through Store.recall on locomo-obs: 59.70 (bench
+60.0). existing stores: the vectors.model marker sees the change, the daemon pulls 33m and re-embeds from sqlite.
