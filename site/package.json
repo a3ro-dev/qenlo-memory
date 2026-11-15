@@ -1,0 +1,26 @@
+{
+  "name": "qenlo-memory-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "d3-scale": "^4.0.3",
+    "d3-shape": "^3.2.1",
+    "solid-js": "^1.9.19",
+    "tailwind-merge": "^2.6.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/d3-scale": "^4.0.9",
+    "@types/d3-shape": "^3.2.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "~5.6",
+    "vite": "^8.3.8",
+    "vite-plugin-solid": "^2.11.16"
+  }
+}

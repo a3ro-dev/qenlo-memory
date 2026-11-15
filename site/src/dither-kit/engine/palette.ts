@@ -1,0 +1,193 @@
+// Shared seed palette for the dither chart family: every chart and the
+// sparkline read a series' fill, line and star hues from the same seed.
+
+export type Rgb = [number, number, number]
+
+export type DitherColor = "green" | "blue" | "purple" | "pink" | "orange" | "red" | "grey"
+
+export type Seed = { fill: Rgb; line: Rgb; star: Rgb }
+
+// Each seed: the area-fill hue, the bright series line, and the star sparkle.
+export const PALETTE: Record<DitherColor, Seed> = {
+  green: { fill: [40, 210, 110], line: [150, 255, 180], star: [200, 255, 220] },
+  blue: { fill: [53, 143, 243], line: [150, 200, 255], star: [205, 228, 255] },
+  purple: {
+    fill: [150, 110, 255],
+    line: [200, 175, 255],
+    star: [225, 210, 255],
+  },
+  pink: { fill: [240, 90, 190], line: [255, 170, 220], star: [255, 205, 235] },
+  orange: {
+    fill: [255, 150, 50],
+    line: [255, 195, 130],
+    star: [255, 220, 175],
+  },
+  red: { fill: [240, 70, 70], line: [255, 150, 140], star: [255, 195, 185] },
+  // No-data: a muted grey so empty metrics read as "nothing here".
+  grey: { fill: [92, 92, 100], line: [140, 140, 150], star: [165, 165, 175] },
+}
+
+export const rgb = ([r, g, b]: Rgb, k = 1, a = 1) =>
+  `rgba(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)},${a})`
+
+export const seedOfColor = (color: DitherColor): Seed => PALETTE[color]
+
+/** A preset name: an own key of the palette, so "constructor" or
+ * "toString" (which `in` would let through) are never a colour. */
+export const isDitherColor = (value: unknown): value is DitherColor =>
+  typeof value === "string" && Object.prototype.hasOwnProperty.call(PALETTE, value)
+
+// Arbitrary-hue support so a series can be any colour, not just the 7 presets.
+/** Hue (0–360) → an rgb fill tuned to sit alongside the chart palette. */
+export function hueFill(hue: number): Rgb {
+  const h = ((hue % 360) + 360) % 360
+  const s = 0.85
+  const l = 0.58
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x]
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)]
+}
+const mix = (a: Rgb, b: Rgb, t: number): Rgb => [
+  Math.round(a[0] + (b[0] - a[0]) * t),
+  Math.round(a[1] + (b[1] - a[1]) * t),
+  Math.round(a[2] + (b[2] - a[2]) * t),
+]
+
+const seedFromFill = (fill: Rgb): Seed => ({
+  fill,
+  line: mix(fill, [255, 255, 255], 0.45),
+  star: mix(fill, [255, 255, 255], 0.72),
+})
+
+/** A full Seed from a hue (0–360). Kept for back-compat with hue-number colours. */
+export function seedFromHue(hue: number): Seed {
+  return seedFromFill(hueFill(hue))
+}
+
+// --- full RGB / hex / HSV colour ------------------------------------------
+export function hexToRgb(hex: string): Rgb {
+  let h = hex.replace("#", "").trim()
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  const n = Number.parseInt(h, 16)
+  if (h.length !== 6 || Number.isNaN(n)) return [128, 128, 128]
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+const hx = (n: number) =>
+  Math.max(0, Math.min(255, Math.round(n)))
+    .toString(16)
+    .padStart(2, "0")
+export const rgbToHex = ([r, g, b]: Rgb): string => `#${hx(r)}${hx(g)}${hx(b)}`
+
+// --- WCAG 2 contrast: the one reading the kit, the site and the walk share --
+/** An sRGB channel in 0–1 in linear light (the sRGB transfer, undone). */
+export const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+/** Linear light in 0–1 back to an sRGB channel in 0–1 (the sRGB transfer). */
+export const toGamma = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055)
+
+/** WCAG 2 relative luminance of an opaque sRGB colour, channels 0–255
+ * (fractions allowed: a blend or a raster's mean). */
+export const luminance = ([r, g, b]: readonly [number, number, number]): number =>
+  0.2126 * toLinear(r / 255) + 0.7152 * toLinear(g / 255) + 0.0722 * toLinear(b / 255)
+
+/** WCAG 2 contrast ratio of two relative luminances, in either order (1–21). */
+export const contrast = (a: number, b: number): number => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+
+/** Sample a colour ramp at t in [0, 1] into `out` (no allocation per pixel).
+ * A single colour fills `out` uniformly. Shared by the generative canvas
+ * backgrounds (ferrofluid, aurora, ...) that tint by a position. */
+export function sampleRgbGradient(colors: Rgb[], t: number, out: [number, number, number]): void {
+  const n = colors.length
+  const lo = colors[0]
+  if (n === 1) {
+    out[0] = lo[0]
+    out[1] = lo[1]
+    out[2] = lo[2]
+    return
+  }
+  const f = (t < 0 ? 0 : t > 1 ? 1 : t) * (n - 1)
+  const i = Math.floor(f)
+  const frac = f - i
+  const a = colors[i]
+  const b = colors[Math.min(i + 1, n - 1)]
+  out[0] = a[0] + (b[0] - a[0]) * frac
+  out[1] = a[1] + (b[1] - a[1]) * frac
+  out[2] = a[2] + (b[2] - a[2]) * frac
+}
+
+/** HSV (h 0–360, s/v 0–1) → rgb. */
+export function hsvToRgb(h: number, s: number, v: number): Rgb {
+  h = ((h % 360) + 360) % 360
+  const c = v * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = v - c
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x]
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)]
+}
+export function rgbToHsv([r, g, b]: Rgb): { h: number; s: number; v: number } {
+  r /= 255
+  g /= 255
+  b /= 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const d = max - min
+  let h = 0
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    h *= 60
+    if (h < 0) h += 360
+  }
+  return { h, s: max ? d / max : 0, v: max }
+}
+export const hsvToHex = (h: number, s: number, v: number): string => rgbToHex(hsvToRgb(h, s, v))
+export const hexToHsv = (hex: string) => rgbToHsv(hexToRgb(hex))
+
+export function seedFromHex(hex: string): Seed {
+  return seedFromFill(hexToRgb(hex))
+}
+
+/** Seed for a preset name, a hue number, or a hex string — any colour. */
+export function seedFromColor(color: DitherColor | number | string): Seed {
+  if (typeof color === "number") return seedFromHue(color)
+  if (isDitherColor(color)) return PALETTE[color]
+  return seedFromHex(color)
+}
+
+/** A CSS colour string for a swatch. */
+export function cssColor(color: DitherColor | number | string): string {
+  if (typeof color === "number") return rgbToHex(hueFill(color))
+  if (isDitherColor(color)) return `var(--swatch-${color})`
+  return color
+}
+
+/** Any colour → a hex string (to seed the picker from a preset). */
+export function colorToHex(color: DitherColor | number | string): string {
+  if (typeof color === "number") return rgbToHex(hueFill(color))
+  if (isDitherColor(color)) return rgbToHex(PALETTE[color].fill)
+  return color
+}

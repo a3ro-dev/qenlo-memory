@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qenlo-memory: one local memory for every coding agent</title>
+<meta name="description" content="claude code, codex, cursor, gemini cli, copilot and 20 more agents share one local memory on your laptop. llm-free, 37 ms recall, 52 MB installed, apache-2.0.">
+<meta name="author" content="Akshat Singh Kushwaha (a3ro-dev)">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#17215a">
+<link rel="canonical" href="https://a3ro-dev.github.io/qenlo-memory/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="qenlo-memory: one memory for every coding agent">
+<meta property="og:description" content="a fix codex found yesterday shows up in claude code today, labeled by codex. local, llm-free, apache-2.0.">
+<meta property="og:url" content="https://a3ro-dev.github.io/qenlo-memory/">
+<meta property="og:image" content="https://a3ro-dev.github.io/qenlo-memory/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://a3ro-dev.github.io/qenlo-memory/og.png">
+<link rel="icon" href="/qenlo-memory/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/qenlo-memory/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Atkinson+Hyperlegible+Next:wght@400;600&family=Martian+Mono:wght@400;500&display=swap">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"qenlo-memory","applicationCategory":"DeveloperApplication","operatingSystem":"Windows, macOS, Linux","softwareVersion":"0.4.0","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"codeRepository":"https://github.com/a3ro-dev/qenlo-memory","author":{"@type":"Person","name":"Akshat Singh Kushwaha","alternateName":"a3ro-dev","url":"https://github.com/a3ro-dev","sameAs":["https://www.linkedin.com/in/akshat-singh-kushwaha"]}}
+</script>
+<script>document.documentElement.classList.add("js")</script>
+</head>
+<body>
+<a class="skip" href="#main">skip to content</a>
+
+<header class="head">
+  <a class="mark" href="#top" aria-label="qenlo-memory, back to top"><span class="mark-dot" aria-hidden="true"></span>qenlo-memory</a>
+  <nav aria-label="sections">
+    <a href="#how">how it works</a>
+    <a href="#numbers">numbers</a>
+    <a href="#qenlo">qenloDB</a>
+    <a href="#install">install</a>
+    <a class="gh" href="https://github.com/a3ro-dev/qenlo-memory">github</a>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <p class="ver">0.4.0, apache-2.0</p>
+    <h1 id="hero-title">one memory for every coding agent you run</h1>
+    <p class="lede">i use claude code, codex, cursor, gemini cli and copilot, and every one of them used to start from zero. <span class="hi">qenlo-memory is one local store they all read and write,</span> so a fix codex found yesterday shows up in claude code today, labeled by codex.</p>
+    <div class="install-slot" data-island="install-hero">
+      <pre class="fallback"><code>curl -fsSL https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.sh | sh</code></pre>
+    </div>
+    <p class="facts">no llm inside, 37 ms recall, 52 MB installed, 25 agents wired in one run</p>
+  </div>
+  <div class="hero-art">
+    <div class="world" data-island="hero-world" role="img" aria-label="a sphere of 243 small cubes, one per memory in the author's store, assembling piece by piece"></div>
+    <p class="caption">243 cubes, one for each memory my agents have written so far. drag it.</p>
+  </div>
+</section>
+
+<section class="band" aria-labelledby="why-title">
+  <div class="sec-head">
+    <h2 id="why-title">the same thing, explained once per agent</h2>
+    <p>every session starts knowing nothing, and none of my agents knew what the others had figured out an hour ago. so the release steps, the preferences and the <q>no, we tried that</q> got explained again and again. that's fine the first time i guess, it gets old by the fifth.</p>
+  </div>
+  <div class="pair">
+    <figure>
+      <div class="console" data-island="console-codex">
+        <pre class="fallback"><code>$ qenlo-memory remember "release: tag, run sdk-release.yml, verify SHA256SUMS" --kind procedural
+remembered #41</code></pre>
+      </div>
+      <figcaption>codex, 3:12 pm, writes down how a release goes</figcaption>
+    </figure>
+    <figure>
+      <div class="console" data-island="console-claude">
+        <pre class="fallback"><code>$ qenlo-memory recall "how do we release qenlo"
+#41 procedural | by codex | 2026-11-15 15:12 | qenlo | release: tag, run sdk-release.yml, verify SHA256SUMS</code></pre>
+      </div>
+      <figcaption>claude code, two hours later, never asked</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="plate" data-island="plate-1" aria-hidden="true"></div>
+
+<section class="band" id="how" aria-labelledby="how-title">
+  <div class="sec-head">
+    <h2 id="how-title">how it works</h2>
+    <p>one daemon, a thin cli, and the agents you already have. nothing new to learn for them, they call it from the shell like <code>git</code>.</p>
+  </div>
+  <ol class="steps">
+    <li><h3>install finds your agents</h3><p>it looks for every coding agent on the machine and links one brain folder into each: the skill, an always-on rule, and hooks where the agent supports them. it backs up any file it edits, once, and <code>--dry-run</code> shows the plan first.</p></li>
+    <li><h3>agents run it from the shell</h3><p>the first call starts one daemon on 127.0.0.1 with a token from your home folder. every other call is a thin client. there's one owner because qenlo locks a collection to one process.</p></li>
+    <li><h3>ollama embeds, qenlo searches</h3><p>embeddings come from ollama on your gpu (arctic-embed 33m, 58 MB of vram). vectors live in a qenlo collection, text and provenance in sqlite next to it.</p></li>
+    <li><h3>every memory has a name on it</h3><p>the agent that wrote it is read from the shell (claude code sets <code>AI_AGENT</code>), so a recall says <q>by codex</q> or <q>by cursor</q> and you can tell where an idea came from.</p></li>
+  </ol>
+  <div class="agents">
+    <h3>wired in one run</h3>
+    <ul class="agent-list">
+      <li>claude code</li><li>codex</li><li>cursor</li><li>antigravity</li><li>gemini cli</li><li>opencode</li><li>copilot cli</li><li>amp</li><li>factory droid</li><li>auggie</li><li>goose</li><li>roo code</li><li>continue</li><li>cline</li><li>kiro</li><li>qwen</li><li>qoder</li><li>windsurf</li><li>crush</li><li>kilo</li><li>junie</li><li>trae</li><li>vs code</li><li>zed</li><li>claude desktop</li>
+    </ul>
+    <p class="note">the last three over mcp, with <code>install --mcp</code>. it only touches agents whose config folder already exists.</p>
+  </div>
+</section>
+
+<section class="band" aria-labelledby="recall-title">
+  <div class="split">
+    <div>
+      <h2 id="recall-title">recall looks three ways at once</h2>
+      <p>a 22m or 33m embedding model is small enough to run anywhere, and small enough to blur exactly the things agents remember: names, ports, versions, paths. so recall adds three scores.</p>
+      <dl class="channels">
+        <div><dt>meaning</dt><dd>the query's embedding against every current memory, exact search in qenlo, no approximate index.</dd></div>
+        <div><dt>words</dt><dd>bm25 over sqlite's fts5, which ships with python. it only counts as far as its best hit is real evidence.</dd></div>
+        <div><dt>time</dt><dd><q>last week</q> or <q>in september</q> becomes a timestamp window and a second dense search inside it.</dd></div>
+      </dl>
+      <p class="formula"><code>0.5 · meaning + 0.5 · words + 0.25 · time</code></p>
+      <p>that recipe came out of a closed-loop study of about sixty memory papers. LoCoMo facts recall@5 went from 51.3 to 58.7, and a recency bonus, the obvious other idea, made things worse.</p>
+    </div>
+    <figure class="shader-fig">
+      <div class="shader" data-island="recall-shader" role="img" aria-label="three soft fields, meaning, words and time, adding up into one bright region where the best memory sits"></div>
+      <figcaption>three fields add up, and the brightest cell wins. move the pointer to move the query.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="plate" data-island="plate-2" aria-hidden="true"></div>
+
+<section class="band" aria-labelledby="change-title">
+  <div class="split">
+    <div>
+      <h2 id="change-title">when a fact changes, the old one steps aside</h2>
+      <p>an old port that keeps coming back is worse than no memory at all. in a test with 20 facts that change and 200 distractors, plain append-only memory put the stale value on top <strong>60%</strong> of the time.</p>
+      <p>the agent writing the memory is already an llm, so it can tell when a fact replaced another one. <code>remember</code> shows the memories the new one is probably about, and <code>--replaces</code> links them. the old one leaves search and stays in <code>history</code>. for facts that are made to change, <code>--key staging.db.port</code> names the slot and needs no id. the new value came first 20 out of 20 times.</p>
+<pre class="code"><code>qenlo-memory remember "the daemon listens on 7438" --replaces 12
+qenlo-memory history 12</code></pre>
+    </div>
+    <div class="timeline" data-island="timeline">
+      <ol class="fallback">
+        <li>#12 the daemon listens on 7437, by codex</li>
+        <li>#52 the daemon listens on 7438, replaces #12</li>
+        <li>history 12: replaced by #52, still readable</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="numbers" aria-labelledby="numbers-title">
+  <div class="sec-head">
+    <h2 id="numbers-title">the numbers, losses included</h2>
+    <p>everything here reproduces from <a href="https://github.com/a3ro-dev/qenlo-memory/tree/main/research">research/</a> in the repo, including the ideas that made things worse.</p>
+  </div>
+
+  <div class="chart-block">
+    <h3>against EdgeMem, the strongest published llm-free memory</h3>
+    <p>LongMemEval-S, 470 questions, every turn indexed, no llm anywhere. R is the strict reading: every gold session in the top k.</p>
+    <div class="chart" data-island="chart-edgemem">
+      <table class="fallback">
+        <caption>LongMemEval-S retrieval</caption>
+        <thead><tr><th scope="col"></th><th scope="col">R@3</th><th scope="col">NDCG@3</th><th scope="col">R@10</th><th scope="col">NDCG@10</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">qenlo-memory 0.4</th><td>82.77</td><td>91.44</td><td>94.89</td><td>93.81</td></tr>
+          <tr><th scope="row">EdgeMem</th><td>81.49</td><td>90.49</td><td>93.83</td><td>92.80</td></tr>
+          <tr><th scope="row">MemGAS</th><td>78.51</td><td>86.83</td><td>94.47</td><td>89.96</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="chart-block">
+    <h3>against mem0 on its llm-free path</h3>
+    <p>same embedding model in the same ollama, the same 2,541 LoCoMo facts and 1,982 questions, mem0 2.2.1 with its bm25 extras on. writes are slower here, 59 ms against 50, because every save checks for a fact it might replace.</p>
+    <div class="quad" data-island="chart-mem0">
+      <table class="fallback">
+        <caption>qenlo-memory against mem0</caption>
+        <thead><tr><th scope="col"></th><th scope="col">qenlo-memory</th><th scope="col">mem0</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">recall@5, higher is better</th><td>58.1</td><td>54.3</td></tr>
+          <tr><th scope="row">search p50, ms</th><td>34</td><td>50</td></tr>
+          <tr><th scope="row">peak ram, MB</th><td>47</td><td>154</td></tr>
+          <tr><th scope="row">installed, MB</th><td>52</td><td>1,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="chart-block split">
+    <div>
+      <h3>answer accuracy, all 500 questions</h3>
+      <p class="big"><span data-count="71.6">71.6</span>%</p>
+      <p>judged with LongMemEval's own prompts. the memory stays llm-free, the llm is only the benchmark's reader and judge (nemotron on nvidia's free api). multi-session questions are the weak spot, and the readout is the next thing i'm fixing. EdgeMem reports 60.0 with a different reader, so it's not a like-for-like comparison.</p>
+    </div>
+    <div class="chart radar" data-island="chart-qa">
+      <table class="fallback">
+        <caption>accuracy by question type, %</caption>
+        <tbody>
+          <tr><th scope="row">single-session assistant</th><td>98.2</td></tr>
+          <tr><th scope="row">single-session user</th><td>95.7</td></tr>
+          <tr><th scope="row">knowledge update</th><td>85.9</td></tr>
+          <tr><th scope="row">preference</th><td>70.0</td></tr>
+          <tr><th scope="row">temporal</th><td>62.4</td></tr>
+          <tr><th scope="row">multi-session</th><td>48.9</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="plate" data-island="plate-3" aria-hidden="true"></div>
+
+<section class="band qenlo" id="qenlo" aria-labelledby="qenlo-title">
+  <div class="split">
+    <div>
+      <h2 id="qenlo-title">under it, qenloDB</h2>
+      <p class="lede">qenlo is the embedded vector database i'm building, in rust. <span class="hi">one process owns one durable record store, filters run before ranking, and search is exact.</span> there's no index to tune and no server to run.</p>
+      <p>indexes are disposable, application data isn't. so ids, vectors, metadata and tombstones live in one canonical store, and the cpu, wgpu, usearch and pytorch paths are structures built from it that can be thrown away and rebuilt. search runs on the cpu by default and moves to the gpu once a matrix is big enough to be worth moving.</p>
+      <p>sdks for rust, python and typescript, with go, kotlin and swift in preview.</p>
+      <p><a class="link" href="https://a3ro-dev.github.io/qenlo/">qenlo's own site</a> <a class="link" href="https://github.com/a3ro-dev/qenlo">qenlo on github</a></p>
+    </div>
+    <figure class="qenlo-art">
+      <div class="world" data-island="qenlo-world" role="img" aria-label="ten rows of records, each a row of sixteen float columns, building up as the page scrolls"></div>
+      <figcaption>a collection: every record a row of floats. scroll to fill it.</figcaption>
+    </figure>
+  </div>
+
+  <div class="chart-block">
+    <h3>exact search, 100k vectors of 384 dims, cpu only</h3>
+    <p>p95 call latency from retained raw files, every row exact (recall 1.000). lower is better.</p>
+    <div class="chart short" data-island="chart-qenlo">
+      <table class="fallback">
+        <caption>exact search p95, ms</caption>
+        <tbody>
+          <tr><th scope="row">qenlo</th><td>12.9</td></tr>
+          <tr><th scope="row">Milvus Lite 3.0</th><td>76.2</td></tr>
+          <tr><th scope="row">LanceDB 0.38</th><td>242.3</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>time to first query is <strong>0.64 s</strong>, against 48 to 80 s for FAISS HNSW, Chroma and Milvus Lite to build an index. a selective filter with 1% of rows eligible answers in 0.24 ms against Chroma's 43.</p>
+    <p class="loss">where it loses: FAISS HNSW answers the same 100k cell in 1.5 ms, approximate, against qenlo's 12.9 exact, and FAISS on a gpu beat qenlo's cuda prototype at 1M × 768. qenlo is exact and embedded. it isn't the fastest ann engine and doesn't try to be.</p>
+  </div>
+
+  <div class="taught">
+    <h3>what building a product on it taught the database</h3>
+    <ul>
+      <li>in alpha.10 the write-ahead log only ever grew, because <code>flush()</code> returned early after every commit. qenlo-memory found it, alpha.11 fixed it.</li>
+      <li>an agent's memory is mostly <q>write one thing, then search</q>. up to alpha.11 every write threw away the search matrix. beta.1 keeps each vector once in the buffer search reads, which made add-then-search 13x faster at 2,000 rows and cut memory per row by 40%.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="band install" id="install" aria-labelledby="install-title">
+  <div class="sec-head">
+    <h2 id="install-title">install it in one line</h2>
+    <p>the script installs <a href="https://docs.astral.sh/uv/">uv</a> if you don't have it, installs the cli, then <code>qenlo-memory install</code> sets up ollama, pulls the embedding model and wires every agent it finds. then restart your agents. run the same line again to upgrade.</p>
+  </div>
+  <div class="install-slot wide" data-island="install-main">
+    <pre class="fallback"><code># mac and linux
+curl -fsSL https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.sh | sh
+
+# windows (powershell)
+irm https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.ps1 | iex</code></pre>
+  </div>
+  <div class="cols">
+    <div>
+      <h3>then, from any agent or your own shell</h3>
+<pre class="code"><code>qenlo-memory recall "how do we release qenlo"
+qenlo-memory recent -n 10 --agent codex
+qenlo-memory remember "staging moved to 6543" --key staging.db.port
+qenlo-memory review
+qenlo-memory export &gt; memories.jsonl
+qenlo-memory stats</code></pre>
+    </div>
+    <div>
+      <h3>good to know</h3>
+      <ul class="plain">
+        <li>runs on windows x64, linux x86_64 and apple silicon. intel macs and linux arm aren't covered yet.</li>
+        <li><code>qenlo-memory install --dry-run</code> shows every file it would touch without writing anything.</li>
+        <li>it's local and single-user. the daemon only listens on 127.0.0.1 and wants a token from your home folder.</li>
+        <li>secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.</li>
+        <li><code>import</code> reads a mem0 export too, if you're moving over.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-art" data-island="foot-art" aria-hidden="true"></div>
+  <div class="foot-inner">
+    <div>
+      <p class="sig">made by <a href="https://github.com/a3ro-dev">Akshat Singh Kushwaha</a>, a3ro-dev on the internet.</p>
+      <p>qenlo-memory and qenlo are open source under apache-2.0. say hi on <a href="https://www.linkedin.com/in/akshat-singh-kushwaha">linkedin</a> or open an <a href="https://github.com/a3ro-dev/qenlo-memory/issues">issue</a>.</p>
+    </div>
+    <div class="credits">
+      <p>the dithered art on this page is drawn live by <a href="https://github.com/drvova/dither-ui">dither-ui</a>, mit licensed, by Sasha Fortel.</p>
+      <p>type: Big Shoulders Display, Atkinson Hyperlegible Next, Martian Mono. benchmarks: LongMemEval, LoCoMo.</p>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

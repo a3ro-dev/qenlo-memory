@@ -10,3 +10,4 @@ research/data/embcache.sqlite-journal
 shots/
 research/data/llmcache.sqlite
 research/data/llmcache.sqlite-journal
+.design/
