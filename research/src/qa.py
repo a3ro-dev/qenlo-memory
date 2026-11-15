@@ -153,6 +153,9 @@ def retrieve(q: dict, config: str, embed) -> tuple[list, dict]:
         return [(w, [(t["role"], t["content"]) for t in s]) for sid, w, s in sess if sid in gold], {"recall_any": 1.0, "recall_all": 1.0}
     if config.startswith("ranker:"):  # any bench ranker over the all-turns index (lme_retrieval.py's haystack)
         return _ranked(q, config.split(":", 1)[1], embed, gold)
+    if config.startswith("sessions:"):  # sessions:<ranker>:<n> = the n best sessions (by their best turn), whole
+        _, name, n = config.split(":")
+        return _ranked(q, name, embed, gold, sessions=int(n))
     docs, origin = [], {}
     for sid, w, s in sess:
         for i, t in enumerate(s):
@@ -180,7 +183,7 @@ def retrieve(q: dict, config: str, embed) -> tuple[list, dict]:
     return chunks, {"recall_any": float(bool(gold & found)), "recall_all": float(gold <= found) if gold else 1.0}
 
 
-def _ranked(q: dict, name: str, embed, gold: set) -> tuple[list, dict]:
+def _ranked(q: dict, name: str, embed, gold: set, sessions: int = 0) -> tuple[list, dict]:
     import rankers
     from bench import Index
     from lme_retrieval import lme_all_one
@@ -188,20 +191,29 @@ def _ranked(q: dict, name: str, embed, gold: set) -> tuple[list, dict]:
     h = lme_all_one(q)
     idx = Index(h, embed)
     qq = h.queries[0]
-    ranked = getattr(rankers, name)(idx, qq, embed([qq.text], query=True)[0])[:TOPK]
-    role = {d: r for d, r in h.role.items()}
-    chunks = [(idx.created[d], [(role[d], idx.text[d])]) for d in ranked]
-    found = {h.unit[d][0] for d in ranked}
+    ranked = getattr(rankers, name)(idx, qq, embed([qq.text], query=True)[0])
+    role = h.role
+    if sessions:
+        best = list(dict.fromkeys(h.unit[d][0] for d in ranked))[:sessions]
+        docs = {s: sorted((d for d in idx.text if h.unit[d][0] == s), key=idx.created.get) for s in best}
+        chunks = [(idx.created[ds[0]], [(role[d], idx.text[d]) for d in ds]) for ds in docs.values()]
+        found = set(best)
+    else:
+        ranked = ranked[:TOPK]
+        chunks = [(idx.created[d], [(role[d], idx.text[d])]) for d in ranked]
+        found = {h.unit[d][0] for d in ranked}
     idx.close()
     return chunks, {"recall_any": float(bool(gold & found)), "recall_all": float(gold <= found) if gold else 1.0}
 
 
 def main():
+    global TOPK
     ap = argparse.ArgumentParser()
     ap.add_argument("config")  # dense | hybrid | oracle | ranker:<name in rankers.py>
     ap.add_argument("--key-file", required=True, action="append", help="repeat for more keys; each gets its own pacer")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--rpm", type=float, default=20)  # per key; NIM 429s the judge at ~35/min on one key
+    ap.add_argument("--topk", type=int, default=TOPK, help="turns handed to the reader (ranker: and hybrid/dense configs)")
     ap.add_argument("--workers", type=int, default=48)  # calls take up to ~100 s (550B reader, long contexts); the pacers cap rpm
     a = ap.parse_args()
     data = json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
@@ -209,14 +221,15 @@ def main():
         per, seen = max(1, a.limit // 6), collections.Counter()
         data = [q for q in data if (seen.update([q["question_type"]]) or seen[q["question_type"]] <= per)]
     llm, embed = LLM([Path(f).read_text().strip() for f in a.key_file], a.rpm), StoreEmbed()
-    out_path = DATA / f"qa_{a.config.replace(':', '-')}.jsonl"
+    TOPK = a.topk
+    out_path = DATA / f"qa_{a.config.replace(':', '-')}{'' if TOPK == 10 else f'_k{TOPK}'}.jsonl"
 
     t0 = time.time()
     prepared = []
     for n, q in enumerate(data):  # retrieval in the main thread: ollama embeds one request at a time anyway
         chunks, stats = retrieve(q, a.config, embed)
         prompt = READ.format(history(chunks), q["question_date"], q["question"])
-        prepared.append((q, prompt, stats))
+        prepared.append((q, prompt, {**stats, "ctx_chars": len(prompt)}))
         if n % 25 == 0:
             print(f"retrieved {n + 1}/{len(data)}  {time.time() - t0:.0f}s", flush=True)
 
