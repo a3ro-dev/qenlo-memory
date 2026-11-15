@@ -202,7 +202,7 @@ def main():
     ap.add_argument("--key-file", required=True, action="append", help="repeat for more keys; each gets its own pacer")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--rpm", type=float, default=20)  # per key; NIM 429s the judge at ~35/min on one key
-    ap.add_argument("--workers", type=int, default=12)  # gemma-4 takes ~45 s per call on NIM; the pacer still caps rpm
+    ap.add_argument("--workers", type=int, default=48)  # calls take up to ~100 s (550B reader, long contexts); the pacers cap rpm
     a = ap.parse_args()
     data = json.loads((RAW / "longmemeval_s.json").read_text(encoding="utf-8"))
     if a.limit:  # stratified: the first N/6 of each type, so a smoke run still covers every type
