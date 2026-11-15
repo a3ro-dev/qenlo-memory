@@ -1,4 +1,39 @@
-# findings (2026-10-31)
+# findings
+
+## 0.4 round (2026-11-15, in progress): the best local, LLM-free memory
+
+goal set by akshat: best in the niche (local, no LLM in the memory process, tiny, fast). the bar is EdgeMem
+(arXiv:2609.05553), the strongest published LLM-free system; the stretch is supermemory's ~85% published QA.
+
+### what we know so far
+
+1. **we already clear the LLM-free bar on retrieval.** on EdgeMem's own LongMemEval-S table (470 questions, all turns,
+   no LLM), the shipped 0.3 recipe gets R@3 84.47 / NDCG@3 91.89 / R@10 95.32 / NDCG@10 93.79 against EdgeMem's
+   81.49 / 90.49 / 93.83 / 92.80, using the stricter reading of recall (every gold session in the top k). dense
+   alone (0.2) would have lost (77.87 R@3). the lexical channel is what carried us past it.
+2. **session context helps turn retrieval and costs session recall.** EdgeMem's episode score (turn + whole-session
+   bm25) lifts LoCoMo raw-turn R@5 57.6 -> 63.6 and memscore 68.07 -> 70.16, but drops multi-hop and loses ~1-1.5
+   strict session recall on LongMemEval. letting the session score only lift a turn (E3.2, max form) gives the best
+   memscore, 70.53, and recovers LongMemEval preference, but not LME session recall. a diversity floor (E3.1) does
+   nothing: the loss is demotion, not crowding.
+3. **neighbour readout costs recall@5** (neighbours take slots); its value, if any, is for the reader. QA pending.
+4. **with hybrid recall, embedder size flattens out.** arctic 22m / 33m / 110m / 335m: 58.3 / 61.1 / 61.7 / 61.9 on
+   the LoCoMo suites (dense alone spreads them over ~8 points). the 67 MB 33m model captures most of what 15x larger
+   ones add; it is the candidate default (stage B pending). all-minilm and granite-30m sit below the default.
+5. **the eval itself:** NIM free tier, reader nemotron-3-ultra with thinking off (a big non-reasoning reader, the role
+   GPT-4o plays in published setups), judge minimax-m3.1-flash. one key sustains ~13-22 calls/min; reasoning models
+   silently spend the answer budget; the harness rejects substituted models and reasoning replies.
+
+### lessons (0.4)
+
+- reasoning models hide their tokens inside max_tokens: probe with a realistic prompt, not a yes/no.
+- a shared backoff across threads turns a few 429s into minutes of silence; back off per thread, log every retry.
+- at 100 s per call the run is latency-bound; workers, not the rate limit, set the pace.
+- `endswith("22m")` matches all-minilm:22m. match model names exactly.
+
+---
+
+# 0.3 round (2026-10-31)
 
 ## what we know
 
