@@ -26,3 +26,13 @@ questions need every mention, which turns cannot hold. E6's first answers (6/13 
   batching can only make the reader's job harder (longer input), so it cannot inflate the score.
 - run: `dynamic --cot --batch-read 8 --batch-judge 25`, all 500 questions, both keys.
 - embedder for this run: snowflake-arctic-embed:33m, the shipped 0.4 default (E2). earlier QA runs used 22m.
+
+## revision 2 (2026-11-15 16:32): the batched run is invalid, rerun unbatched
+
+the batched run (8 questions per reader call) scored 59.2%, with single-session-user at 70% (oracle 99%). inspection:
+the reader numbered its answers out of order inside a batch, so correct answers were attached to the neighbouring
+task (e.g. "Data Science certification" filed under the running-shoes question, "Nike" under the certification one),
+all with recall_all 1.0. this is an attribution error of batching, not a memory result; kept as
+qa_dynamic_cot_b8.INVALID.jsonl and reported as a negative result about batching. rerun: identical config, one
+question per reader request and one answer per judge request (the official setup); answers that were already produced
+by single-call fallbacks come from the cache unchanged.
