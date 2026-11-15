@@ -24,6 +24,15 @@ goal set by akshat: best in the niche (local, no LLM in the memory process, tiny
    GPT-4o plays in published setups), judge minimax-m3.1-flash. one key sustains ~13-22 calls/min; reasoning models
    silently spend the answer budget; the harness rejects substituted models and reasoning replies.
 
+6. **final numbers (0.4, published).** LongMemEval-S retrieval with the shipped 33m default beats EdgeMem on all four
+   of its reported numbers (R@3 82.77, NDCG@3 91.44, R@10 94.89, NDCG@10 93.81 vs 81.49 / 90.49 / 93.83 / 92.80).
+   answer accuracy on all 500: 71.6% (EdgeMem 60.0 with gpt-4o-mini; supermemory ~85 with gpt-4o; not same-reader).
+7. **more context is not automatically better.** whole sessions + LongMemEval's CoT prompt lost to 10 plain turns on the
+   shared 195 questions (71.3 vs 79.5); multi-session did not improve (8 vs 11 of 33). the readout, not retrieval
+   (session recall_any@10 96-99%), is the open problem, and the next round should separate prompt, readout and
+   embedder, which E7 changed together.
+8. **batching several questions into one reader call is unsafe:** the reader swapped answers between neighbouring tasks.
+
 ### lessons (0.4)
 
 - reasoning models hide their tokens inside max_tokens: probe with a realistic prompt, not a yes/no.
