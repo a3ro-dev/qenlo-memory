@@ -35,7 +35,7 @@ from bench import DATA  # noqa: E402
 from qenlo_memory.store import Store, redact  # noqa: E402
 
 URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "minimaxai/minimax-m3.1-flash"
+READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3.5-lightning-30b-a3b"
 # the reader runs with thinking off: a big model answering directly, the role GPT-4o plays in published setups
 NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 TOPK = 10

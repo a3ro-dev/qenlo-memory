@@ -50,3 +50,13 @@ with the LLM only in the benchmark, never in qenlo-memory.
   oracle and the final shipped config get the full 500.
 - with n=200 a difference under ~5 points is within noise (binomial sd ~3.3 per arm); the gate reads QA as
   "not worse by more than noise" and per-question paired wins/losses, not as a point estimate.
+
+## amendment 5 (2026-11-15, before any QA result was counted)
+
+- judge: `nvidia/nemotron-3.5-lightning-30b-a3b` (thinking on, 4,096-token budget), not minimax-m3.1-flash. a burst of
+  15 parallel judge calls: minimax 1/15 (429, saturated on NIM's side regardless of key), lightning 15/15 correct at
+  1.6 s median, step-5-preview 14/15 at 10 s, gemma-4 and glm-5.3 0/15. two keys did not lift minimax's limit.
+- lightning is the reader's vendor family (nemotron) but a different model (30B-A3B vs 550B-A55B); reference-based
+  yes/no judging leaves little room for self-preference, and this is checked, not assumed:
+- judge check now cross-family: 50 random items re-judged by `stepfun-ai/step-5-preview`; agreement reported.
+- every run is re-judged under lightning; reader answers come from the cache unchanged.
