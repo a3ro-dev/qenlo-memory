@@ -41,3 +41,12 @@ with the LLM only in the benchmark, never in qenlo-memory.
   minimax answered in 1.3-1.9 s and got all of the three it returned right (the fourth was a 503). it is a different
   family from the reader. the oracle run restarts; every reader answer is cached, so only judge calls repeat.
 - the 50-item judge check with nemotron-ultra (thinking on) stays as planned.
+
+## amendment 4 (2026-11-15, before the variant QA runs)
+
+- NIM's real limit is ~13 calls/min here (429s on the judge at a 35/min pace), so a 500-question run takes ~75 min.
+  variant comparisons (0.3 vs E3.2, and later ones) use the stratified 200-question subset (`--limit 200`: the first
+  33 of each question type, incl. their abstention items), through `ranker:<name>` on the all-turns index. the
+  oracle and the final shipped config get the full 500.
+- with n=200 a difference under ~5 points is within noise (binomial sd ~3.3 per arm); the gate reads QA as
+  "not worse by more than noise" and per-question paired wins/losses, not as a point estimate.
