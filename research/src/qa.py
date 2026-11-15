@@ -116,9 +116,13 @@ class LLM:
                 if e.code not in (429, 500, 502, 503, 504):
                     raise
                 retry = float(e.headers.get("Retry-After") or 0)
-                self._pace(extra=max(retry, 2 ** attempt))  # push the whole pacer back, not just this thread
+                print(f"  retry {attempt + 1} ({model}): HTTP {e.code}, retry-after {retry:.0f}s", file=sys.stderr, flush=True)
+                if retry:  # the server named a wait: everyone waits. otherwise only this thread backs off
+                    with self.lock:
+                        self.next = max(self.next, time.monotonic() + retry)
+                time.sleep(min(60, 2 ** attempt))
             except (urllib.error.URLError, TimeoutError, RuntimeError, KeyError) as e:
-                print(f"  retry {attempt + 1} ({model}): {str(e)[:80]}", file=sys.stderr)
+                print(f"  retry {attempt + 1} ({model}): {str(e)[:80]}", file=sys.stderr, flush=True)
                 time.sleep(2 ** attempt)
         raise RuntimeError(f"{model}: gave up after 8 tries")
 
