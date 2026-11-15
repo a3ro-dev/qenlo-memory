@@ -25,3 +25,4 @@ questions need every mention, which turns cannot hold. E6's first answers (6/13 
   per-type judge prompt. an answer or verdict the reply does not cover falls back to a single official call.
   batching can only make the reader's job harder (longer input), so it cannot inflate the score.
 - run: `dynamic --cot --batch-read 8 --batch-judge 25`, all 500 questions, both keys.
+- embedder for this run: snowflake-arctic-embed:33m, the shipped 0.4 default (E2). earlier QA runs used 22m.
