@@ -1,13 +1,20 @@
-project: qenlo-memory v0.3 — LLM-free memory that stays right
-question: which LLM-free read/write changes make the right memory come back and stale ones stop coming back, at CLI latency?
-metric: memscore = mean(locomo-obs R@5, locomo-turns R@5, lme-s recall_all@5)
-embedder: snowflake-arctic-embed:22m (ollama, gpu), qenlo 0.1.0b2 exact search
-status: concluded-for-0.3 (shipped); open questions in findings.md
-baseline: {memscore: 59.8}
-shipped: {memscore: 68.1, recipe: "0.5*minmax(dense) + 0.5*bm25/max*min(1,max) + 0.25*minmax(dense in time window)"}
-hypotheses:
-  H1-hybrid: {status: supported, delta: "+5.2 (rrf) to +8.1 (interp)"}
-  H2-fusion-form: {status: supported-partly, note: "interp 0.5 beats rrf on locomo, -1 on lme; dense-weighted lost"}
-  H3-time-window: {status: supported-on-subset, note: "+6.1/+3.9 R@5 on locomo time queries, 0 on lme"}
-  H4-recency: {status: refuted, note: "-1 to -4 on locomo"}
-  H5-supersession: {status: supported, note: "stale@1 60% -> 0%, related flag 100%"}
+project: qenlo-memory 0.4 — the best local, LLM-free agent memory
+goal: "best in our niche (akshat, 2026-11-15): local, no LLM in the memory process, tiny, fast. bar = EdgeMem (arXiv:2609.05553); stretch = supermemory's published ~85% LongMemEval-S QA"
+question: which LLM-free read-path changes raise end-to-end answer accuracy, not just recall, at CLI latency?
+metrics:
+  memscore: mean(locomo-obs R@5, locomo-turns R@5, lme-s recall_all@5)   # unchanged from 0.3
+  qa: LongMemEval-S judged accuracy, 500 Qs (research/src/qa.py)
+  edgemem_table: LME-S 470 Qs, all turns, session R/NDCG @3/@10 (research/src/lme_retrieval.py)
+llm_in_eval_only:
+  provider: NVIDIA NIM free tier (rate limited ~40 req/min/key)
+  reader: nvidia/nemotron-3-ultra-550b-a55b, thinking off
+  judge: minimaxai/minimax-m3.1-flash (amendment 3)
+embedder: snowflake-arctic-embed:22m (ollama), qenlo 0.1.0b2
+baseline_0.3: {memscore: 68.07}
+experiments:
+  E1-qa-harness: {status: running, note: "oracle run in progress; 0.3 and E3 QA next"}
+  E2-embedders: {status: protocol locked, note: "models downloading"}
+  E3-episode: {status: supported on memscore (70.16, +2.09), qa gate pending, note: "multi-hop and lme preference down"}
+  E3.1-diversity: {status: refuted, note: "68.87; multi-hop loss is session-score demotion, not crowding"}
+  E4-neighbours: {status: memscore down as predicted (68.02), judged in QA}
+next: [E1 oracle, QA 0.3 vs E3 vs E4, edgemem table, judge check, E2 stage A]
