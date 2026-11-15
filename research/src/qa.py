@@ -35,7 +35,7 @@ from bench import DATA  # noqa: E402
 from qenlo_memory.store import Store, redact  # noqa: E402
 
 URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "google/gemma-4-31b-it"
+READER, JUDGE = "nvidia/nemotron-3-ultra-550b-a55b", "minimaxai/minimax-m3.1-flash"
 # the reader runs with thinking off: a big model answering directly, the role GPT-4o plays in published setups
 NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 TOPK = 10
@@ -217,7 +217,7 @@ def main():
         try:
             hyp = llm(READER, prompt, 500, NO_THINK)
             typ = "abstention" if q["question_id"].endswith("_abs") else q["question_type"]
-            verdict = llm(JUDGE, JUDGE_PROMPTS[typ].format(q["question"], q["answer"], hyp), 2048)
+            verdict = llm(JUDGE, JUDGE_PROMPTS[typ].format(q["question"], q["answer"], hyp), 4096)
             ok = "yes" in verdict.lower()  # the official rule, evaluate_qa.py
             return {"id": q["question_id"], "type": q["question_type"], "abs": typ == "abstention", "ok": ok,
                     "hyp": hyp, "verdict": verdict[-200:], **stats, "reader": READER, "judge": JUDGE}

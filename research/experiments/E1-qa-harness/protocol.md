@@ -33,3 +33,11 @@ with the LLM only in the benchmark, never in qenlo-memory.
 - judge: `google/gemma-4-31b-it` (a different family from the reader, no hidden reasoning, like GPT-4o in the
   official setup).
 - judge check: 50 random judged items re-judged by nemotron-ultra with thinking on; agreement reported.
+
+## amendment 3 (2026-11-15, during the oracle run, before any result was counted)
+
+- judge: `minimaxai/minimax-m3.1-flash` (4,096-token budget), not gemma-4-31b. gemma-4 on NIM timed out 19 times at
+  180 s in the first 11 minutes, which held the run at ~10 calls/min (~100 min per config). on four judge probes
+  minimax answered in 1.3-1.9 s and got all of the three it returned right (the fourth was a 503). it is a different
+  family from the reader. the oracle run restarts; every reader answer is cached, so only judge calls repeat.
+- the 50-item judge check with nemotron-ultra (thinking on) stays as planned.
