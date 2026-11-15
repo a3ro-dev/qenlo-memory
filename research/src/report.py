@@ -80,6 +80,8 @@ if emb:
 # 4. QA
 qa = []
 for f in sorted(DATA.glob("qa_*.jsonl")):
+    if "INVALID" in f.name:  # batched reading misattributed answers (E7 revision 2); kept, not reported as a score
+        continue
     rs = [json.loads(l) for l in f.open(encoding="utf-8") if l.strip()]
     good = [r for r in rs if "error" not in r]
     if not good:
