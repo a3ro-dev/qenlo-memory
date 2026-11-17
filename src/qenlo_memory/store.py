@@ -35,6 +35,10 @@ COMPACT_EVERY = 256  # WAL files before we fold them into a qenlo snapshot
 GPU_FROM = 4096  # qenlo's automatic router only uses the GPU from this many eligible rows (AUTOMATIC_GPU_MIN_ELIGIBLE_ROWS)
 RELATED = 0.82  # cosine above which an existing memory is probably about the same thing (measured on real memories)
 
+
+class Conflict(Exception):
+    """a write lost a race or would contradict a current memory. the daemon answers 409."""
+
 SECRET = re.compile(
     r"\bsk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|AKIA[0-9A-Z]{16}"
     r"|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"
@@ -51,8 +55,48 @@ def line(m: dict) -> str:
     day = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["created"] / 1000))
     score = f" | {m['score']:.2f}" if "score" in m else ""
     gone = f" | replaced by #{m['superseded_by']}" if m.get("superseded_by") else ""
+    # state labels for the reader (A-TMA, arXiv:2607.01935): which note is current, contested or unreviewed
+    flag = (" | tentative" if m.get("tentative") else "") + (f" | possibly stale: newer #{m['contested_by']} disagrees" if m.get("contested_by") else "")
     key = f"[{m['key']}] " if m.get("key") else ""
-    return f"#{m['id']} {m['kind']} | by {m['agent']} | {day} | {m['project'] or '-'}{score}{gone} | {key}{m['text']}"
+    return f"#{m['id']} {m['kind']} | by {m['agent']} | {day} | {m['project'] or '-'}{score}{gone}{flag} | {key}{m['text']}"
+
+
+NEG = re.compile(r"\b(?:not|no|never|none|cannot|without|stop(?:ped)?|disabled?|removed?|deprecated|avoid|don't|doesn't|isn't|aren't|won't|can't|shouldn't|wasn't)\b|n't\b", re.I)
+TOKEN = re.compile(r"[\w.:#/-]+")
+VALUE = re.compile(r"v?\d+(?:[.:]\d+)*[a-z%]{0,2}")  # 5433, 3.12, v1.0.0, 17:05, 30s, 8gb. not dates, hashes or ids
+# words that name which thing ("step 3", "agent 5"), so two different numbers after them don't disagree.
+# shortcut: an english word list, extend it when real stores show more label words
+LABEL = set("agent note step item issue pr ticket session part phase task test case line row id round run".split())
+SHORT = 30  # words. a long note holds many facts, so one "not" in it says nothing about its polarity
+
+
+def slots(text: str) -> dict[str, set[str]]:
+    """value tokens by the content word just before them: 'listens on port 5433' -> {'port': {'5433'}}."""
+    out, anchor = {}, ""
+    for t in TOKEN.findall(text):
+        t = t.strip(".:,;")
+        if VALUE.fullmatch(t):
+            if anchor and anchor not in LABEL:
+                out.setdefault(anchor, set()).add(t)
+        elif t.isalpha() and t not in STOP:
+            anchor = t
+    return out
+
+
+def contradicts(new: str, old: str) -> str:
+    """a cheap, no-llm guess that two texts about the same thing disagree (the symbolic slot check LatticeMind
+    and MEMOIR run before anything expensive): the same word followed by a different value, or, in short notes,
+    one saying not where the other doesn't. call it only on pairs already known to be about the same thing.
+    returns the reason, or ''. measured on a real store in research/findings.md (0.5)."""
+    a, b = new.lower(), old.lower()
+    sa, sb = slots(a), slots(b)
+    shape = lambda vs: {(v[0] == "v", v.count("."), v.count(":"), v.lstrip("v0123456789.:")) for v in vs}
+    for word in sa.keys() & sb.keys():
+        if not sa[word] & sb[word] and shape(sa[word]) & shape(sb[word]):  # 192k vs 402 is a unit mismatch, not a change
+            return f"{word}: {', '.join(sorted(sb[word]))} -> {', '.join(sorted(sa[word]))}"
+    if max(len(a.split()), len(b.split())) <= SHORT and bool(NEG.search(a)) != bool(NEG.search(b)):
+        return "one says not"
+    return ""
 
 
 WORD = re.compile(r"\w[\w.\-/]*\w|\w")
@@ -120,6 +164,10 @@ class Embedder:
     def __init__(self, model: models.Model | None = None):
         self.spec = model or models.active()
         self.model = self.spec.name
+        # concurrent single-text calls (one per daemon request) are pooled into one ollama call: ollama runs embed
+        # requests one at a time, so 100 agents queued 100 calls (2.3 s) where one batch takes 0.9 s (research/src/load.py)
+        self.waiting, self.ready = [], threading.Condition()
+        threading.Thread(target=self._batcher, daemon=True).start()
         try:
             self.dim = len(self(["probe"])[0])
         except urllib.error.HTTPError as e:
@@ -131,8 +179,34 @@ class Embedder:
     def __call__(self, texts: list[str], query: bool = False) -> list[list[float]]:
         prefix = self.spec.query if query else self.spec.doc
         texts = [prefix + t for t in texts]
+        if len(texts) == 1:
+            job = {"text": texts[0], "done": threading.Event()}
+            with self.ready:
+                self.waiting.append(job)
+                self.ready.notify()
+            job["done"].wait()
+            if "error" in job:
+                raise job["error"]
+            return [job["vector"]]
+        return self._embed(texts)
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
         return [v for i in range(0, len(texts), 256)
                 for v in ollama("/api/embed", {"model": self.model, "input": texts[i:i + 256], "keep_alive": -1})["embeddings"]]
+
+    def _batcher(self) -> None:
+        while True:
+            with self.ready:
+                self.ready.wait_for(lambda: self.waiting)
+                jobs, self.waiting = self.waiting[:256], self.waiting[256:]
+            try:
+                for job, v in zip(jobs, self._embed([j["text"] for j in jobs]), strict=True):
+                    job["vector"] = v
+            except Exception as e:  # every caller in the batch gets the error, the batcher keeps running
+                for job in jobs:
+                    job["error"] = e
+            for job in jobs:
+                job["done"].set()
 
     @property
     def device(self) -> str:
@@ -153,25 +227,67 @@ def ollama(path: str, body: dict | None = None):
         raise RuntimeError(f"ollama isn't reachable at {OLLAMA}, start it and try again") from None
 
 
+class _Rows(list):
+    lastrowid = None
+
+    def fetchone(self):
+        return self[0] if self else None
+
+    def fetchall(self):
+        return self
+
+
+class _DB:
+    """one sqlite connection shared by the daemon's request threads. each statement runs and is fetched whole
+    under a lock: interleaved cursors on one connection fail with 'bad parameter or other API misuse' (found by
+    tests/test_concurrency.py). writes still serialise on Store.lock, so a transaction is never interleaved by a write."""
+
+    def __init__(self, path):
+        self.conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+        self.conn.row_factory = sqlite3.Row
+        self.lock = threading.Lock()
+
+    def execute(self, sql, args=()):
+        with self.lock:
+            cur = self.conn.execute(sql, args)
+            rows = _Rows(cur.fetchall())
+            rows.lastrowid = cur.lastrowid
+            return rows
+
+    def executemany(self, sql, seq):
+        with self.lock:
+            self.conn.executemany(sql, seq)
+
+    def close(self):
+        with self.lock:
+            self.conn.close()
+
+
 class Store:
     def __init__(self, root: Path, embed=None, backend: str = "automatic"):
         root.mkdir(parents=True, exist_ok=True)
         self.root, self.backend = root, backend
         self.embed = embed or Embedder()
-        self.db = sqlite3.connect(root / "memories.db", check_same_thread=False, isolation_level=None)
-        self.db.row_factory = sqlite3.Row
+        self.db = _DB(root / "memories.db")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS memories(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,"
             " text TEXT NOT NULL, agent TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL)"
         )
         have = {r["name"] for r in self.db.execute("PRAGMA table_info(memories)")}
         # 0.3: which memory replaced this one and when, and the slot key the writing agent gave it
-        for col, typ in (("superseded_by", "INTEGER"), ("superseded_at", "INTEGER"), ("key", "TEXT")):
+        # 0.5: tentative = written but not confirmed yet; contested_by = a newer memory that seems to disagree
+        for col, typ in (("superseded_by", "INTEGER"), ("superseded_at", "INTEGER"), ("key", "TEXT"),
+                         ("tentative", "INTEGER"), ("contested_by", "INTEGER")):
             if col not in have:
                 self.db.execute(f"ALTER TABLE memories ADD COLUMN {col} {typ}")
         self.db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS words USING fts5(text, tokenize='porter unicode61')")
-        # ponytail: one global lock. one user's agents never come close to needing more.
-        self.lock = threading.Lock()
+        # wal journal: a commit is one append + fsync instead of the rollback journal's several
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.lock = threading.Lock()  # around every qenlo call
+        # group commit: writers that arrive together share one sqlite transaction and one qenlo batch.
+        # wlock is held by whichever writer commits the group; queue holds the writers waiting for the next one.
+        self.wlock, self.qlock, self.queue = threading.Lock(), threading.Lock(), []
+        self._staged, self._gone, self._long_term = [], [], False
         self.path = root / "vectors.qenlo"
         self.marker = root / "vectors.model"  # which model made the vectors
         self.search_backend = "none yet"
@@ -191,6 +307,7 @@ class Store:
             self.db.execute("DELETE FROM words")
             self.db.execute("INSERT INTO words(rowid, text) SELECT id, text || ' ' || coalesce(key, '') FROM memories WHERE superseded_by IS NULL")
         self.vectors.flush()  # qenlo >= 0.1.0a11 folds the WAL into a snapshot here
+        self.wal = 0  # qenlo WAL files written since the last flush
         self._profile()
 
     def _open_collection(self) -> Collection:
@@ -224,10 +341,12 @@ class Store:
         return vectors
 
     def _compact(self) -> None:
-        """every qenlo write is one WAL file that open replays. fold them into a snapshot now and then."""
-        if len(list(self.path.glob("wal-*.qwal"))) >= COMPACT_EVERY:
+        """every qenlo write is one WAL file that open replays. fold them into a snapshot now and then.
+        call with self.lock held."""
+        if self.wal >= COMPACT_EVERY:
             with contextlib.suppress(QenloError):  # the write is already durable; compaction can wait
                 self.vectors.flush()
+                self.wal = 0
 
     def _profile(self) -> None:
         """the long-term tier as a plain file in the brain folder, for agents without session hooks."""
@@ -259,39 +378,102 @@ class Store:
         rows = self.db.execute(sql + (" AND m.kind = ?" if kind else "") + " ORDER BY bm25(words) LIMIT ?", [*args, k])
         return [(i, -s) for i, s in rows]  # fts5's bm25 is lower-is-better
 
-    def _related(self, vector, skip: int) -> list[dict]:
-        """current memories that are probably about the same thing, so the agent can decide: update or keep both."""
-        near = [(i, s) for i, s in self._dense(vector, "", 4) if i != skip and s >= RELATED][:3]
+    def _related(self, vector, text: str) -> list[dict]:
+        """current memories that are probably about the same thing, so the agent can decide: update or keep both.
+        each carries "conflict": why it seems to disagree with the new text, by the no-llm check, or ''."""
+        near = [(i, s) for i, s in self._dense(vector, "", 4) if s >= RELATED][:3]
         rows = self._rows(i for i, _ in near)
-        return [{**rows[i], "score": round(s, 3)} for i, s in near if i in rows]
+        out = [{**rows[i], "score": round(s, 3)} for i, s in near if i in rows and rows[i]["text"].lower() != text.lower()]
+        return [{**r, "conflict": contradicts(text, r["text"])} for r in out]
 
-    def _insert(self, rows: list[tuple], vectors: list, retire: int | None = None) -> list[int]:
-        """rows of (kind, text, agent, project, created, key): one sqlite transaction, one qenlo batch.
-        retire: a memory the (single) new row supersedes, in the same transaction."""
-        self.db.execute("BEGIN IMMEDIATE")
+    def _write(self, fn):
+        """run fn inside a group commit; return what it returns or raise what it raised.
+        each writer queues its fn. whoever takes wlock first runs every queued fn in one sqlite transaction, each
+        in its own savepoint (one writer's Conflict doesn't undo the others), sends the group's vectors to qenlo in
+        one batch and commits. later fns see earlier ones' rows, so key and replaces checks stay exact.
+        under 100 writers that is one fsync per group instead of two per write (research/findings.md, 0.5)."""
+        job = {"fn": fn, "done": threading.Event()}
+        with self.qlock:
+            self.queue.append(job)
+        with self.wlock:
+            if not job["done"].is_set():
+                with self.qlock:
+                    jobs, self.queue = self.queue, []
+                self._group(jobs)
+        if "error" in job:
+            raise job["error"]
+        return job["result"]
+
+    def _group(self, jobs: list[dict]) -> None:
+        self._staged, self._gone, self._long_term = [], [], False
         try:
-            ids = [self.db.execute("INSERT INTO memories(kind, text, agent, project, created, key) VALUES (?, ?, ?, ?, ?, ?)", r).lastrowid
-                   for r in rows]
-            # the key is indexed with the text: "staging.db.port" is exactly the kind of word bm25 is for
-            self.db.executemany("INSERT INTO words(rowid, text) VALUES (?, ?)", [(i, f"{r[1]} {r[5] or ''}") for i, r in zip(ids, rows)])
-            self.vectors.add_batch([Record(i, KINDS[r[0]], r[4], v) for i, r, v in zip(ids, rows, vectors)])
-            if retire:
-                self._retire(retire, ids[0], rows[0][4])
-            self.db.execute("COMMIT")
-        except BaseException:
-            self.db.execute("ROLLBACK")
-            raise
+            self.db.execute("BEGIN IMMEDIATE")
+            for job in jobs:
+                mark = (len(self._staged), len(self._gone), self._long_term)
+                self.db.execute("SAVEPOINT w")
+                try:
+                    job["result"] = job["fn"]()
+                    self.db.execute("RELEASE w")
+                except Exception as e:
+                    self.db.execute("ROLLBACK TO w")
+                    self.db.execute("RELEASE w")
+                    del self._staged[mark[0]:], self._gone[mark[1]:]
+                    self._long_term, job["error"] = mark[2], e
+            # qenlo only gets what is current at the end of the group: a row added and replaced in the same group
+            # never reaches it, and a row whose retirement was rolled back keeps its vector
+            ids = [r.id for r in self._staged] + self._gone
+            live = {r["id"] for r in self.db.execute(
+                f"SELECT id FROM memories WHERE superseded_by IS NULL AND id IN ({','.join('?' * len(ids))})", ids)} if ids else set()
+            with self.lock:
+                for i in self._gone:
+                    if i not in live:
+                        with contextlib.suppress(QenloError):  # a superseded memory has no vector left to delete
+                            self.vectors.delete(i)
+                            self.wal += 1
+                add = [r for r in self._staged if r.id in live]
+                if add:
+                    self.vectors.add_batch(add)
+                    self.wal += 1
+                self.db.execute("COMMIT")
+                self._compact()
+        except BaseException as e:
+            with contextlib.suppress(sqlite3.Error):
+                self.db.execute("ROLLBACK")
+            for job in jobs:
+                job.pop("result", None)
+                job.setdefault("error", e if isinstance(e, Exception) else RuntimeError("write interrupted"))
+            if not isinstance(e, Exception):
+                raise
+        finally:
+            for job in jobs:
+                job["done"].set()
+        if self._long_term:
+            self._profile()
+
+    def _insert(self, rows: list[tuple], vectors: list, retire: int | None = None, tentative: bool = False) -> list[int]:
+        """rows of (kind, text, agent, project, created, key), inside _write. vectors reach qenlo when the group commits.
+        retire: a memory the (single) new row supersedes."""
+        ids = [self.db.execute("INSERT INTO memories(kind, text, agent, project, created, key, tentative) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (*r, 1 if tentative else None)).lastrowid for r in rows]
+        # the key is indexed with the text: "staging.db.port" is exactly the kind of word bm25 is for
+        self.db.executemany("INSERT INTO words(rowid, text) VALUES (?, ?)", [(i, f"{r[1]} {r[5] or ''}") for i, r in zip(ids, rows)])
+        self._staged += [Record(i, KINDS[r[0]], r[4], v) for i, r, v in zip(ids, rows, vectors)]
+        self._long_term |= any(r[0] == "long_term" for r in rows)
+        if retire:
+            self._retire(retire, ids[0], rows[0][4])
         return ids
 
     def _retire(self, id: int, by: int | None, now: int) -> None:
-        """take a memory out of both indexes. by=None deletes it; otherwise it stays in sqlite as history."""
+        """take a memory out of both indexes, inside _write. by=None deletes it; otherwise it stays in sqlite as history."""
+        row = self.db.execute("SELECT kind FROM memories WHERE id = ?", (id,)).fetchone()
+        self._long_term |= bool(row) and row[0] == "long_term"
         self.db.execute("DELETE FROM words WHERE rowid = ?", (id,))
         if by is None:
             self.db.execute("DELETE FROM memories WHERE id = ?", (id,))
         else:
             self.db.execute("UPDATE memories SET superseded_by = ?, superseded_at = ? WHERE id = ?", (by, now, id))
-        with contextlib.suppress(QenloError):  # a superseded memory has no vector left to delete
-            self.vectors.delete(id)
+        self.db.execute("UPDATE memories SET contested_by = NULL WHERE contested_by = ?", (id,))  # its objection leaves with it
+        self._gone.append(id)
 
     @staticmethod
     def _check(text: str, kind: str) -> str:
@@ -303,13 +485,21 @@ class Store:
         return text
 
     def remember(self, text: str, kind: str = "semantic", agent: str = "unknown", project: str = "",
-                 replaces: int | None = None, key: str = "") -> dict:
+                 replaces: int | None = None, key: str = "", expect: int | None = None, tentative: bool = False,
+                 strict: bool = False) -> dict:
         """replaces: the id of a memory this one updates. the old one leaves search but stays in `history`.
         key: a stable name for what the fact is about ("staging.db.port"), chosen by the writing agent. a new
-        memory with the key of a current one in the same project replaces it, with no similarity guess."""
+        memory with the key of a current one in the same project replaces it, with no similarity guess.
+        expect: compare-and-swap on the key. the id the writer read as current for it (0 = it was empty); if
+        another agent wrote the key since, nothing is saved and Conflict says who. replaces is checked the same way.
+        tentative: saved and searchable, kept out of session-start context until someone confirms it.
+        strict: refuse the write if it seems to contradict a current memory it doesn't replace."""
         text, key = self._check(text, kind), " ".join(key.lower().split())
         vector = self.embed([text])[0]
-        with self.lock:
+        related = [] if replaces else self._related(vector, text)  # outside the write: _dense takes the qenlo lock
+
+        def write():
+            nonlocal replaces
             # only the exact same text is a duplicate. "port 3000" vs "port 3001" embed almost identically,
             # and a similarity cutoff would silently keep the stale one. related memories are shown instead.
             same = self.db.execute("SELECT * FROM memories WHERE kind = ? AND lower(text) = lower(?) AND superseded_by IS NULL",
@@ -317,24 +507,38 @@ class Store:
             if key and not replaces:
                 slot = self.db.execute("SELECT id FROM memories WHERE key = ? AND project = ? AND superseded_by IS NULL",
                                        (key, project)).fetchone()
+                if expect is not None and (slot["id"] if slot else 0) != int(expect):
+                    holder = self._rows([slot["id"]])[slot["id"]] if slot else None
+                    raise Conflict(f"key {key} changed since you read it, it is now " + (
+                        f"#{holder['id']} by {holder['agent']}: {holder['text'][:120]}" if holder else "empty")
+                        + ". nothing saved: read it and decide again")
                 replaces = slot and (not same or slot["id"] != same["id"]) and slot["id"]  # same text, same key: a duplicate
             old = self._rows([int(replaces)]).get(int(replaces)) if replaces else None
-            if replaces and (not old or old["superseded_by"] or (same and same["id"] == old["id"])):
+            if old and old["superseded_by"]:  # updated by someone after this writer read it: refuse, don't lose theirs
+                new = self._rows([old["superseded_by"]]).get(old["superseded_by"]) or {"agent": "?", "text": "?"}
+                raise Conflict(f"#{old['id']} was already replaced by #{old['superseded_by']} (by {new['agent']}: "
+                               f"{new['text'][:120]}). nothing saved: read it and decide again")
+            if replaces and (not old or (same and same["id"] == old["id"])):
                 raise KeyError(f"no current memory #{replaces} to replace")
             now = int(time.time() * 1000)
+            conflicts = [r for r in related if r["conflict"] and not (old and r["id"] == old["id"])]
+            if strict and conflicts and not same:
+                raise Conflict("it seems to contradict " + "; ".join(
+                    f"#{r['id']} ({r['conflict']}): {r['text'][:120]}" for r in conflicts)
+                    + ". pass replaces=<id> if it updates one, or save without strict to keep both")
             if same:  # saved already. with replaces, this links the two after the fact
                 if old:
                     self._retire(old["id"], same["id"], now)
-                    if old["kind"] == "long_term":
-                        self._profile()
                 return {**dict(same), "duplicate": True, "replaced": old["id"] if old else None, "related": []}
-            mid = self._insert([(kind, text, agent or "unknown", project, now, key or None)], [vector], old and old["id"])[0]
-            self._compact()
-            if kind == "long_term" or (old and old["kind"] == "long_term"):
-                self._profile()
-        related = [] if old else self._related(vector, mid)
-        return {"id": mid, "kind": kind, "text": text, "agent": agent, "project": project, "created": now, "key": key or None,
-                "replaced": old["id"] if old else None, "related": related}
+            mid = self._insert([(kind, text, agent or "unknown", project, now, key or None)], [vector], old and old["id"], tentative)[0]
+            # both stay live; the older one is labelled until someone replaces or confirms it (LatticeMind's "contested")
+            self.db.executemany("UPDATE memories SET contested_by = ? WHERE id = ? AND superseded_by IS NULL",
+                                [(mid, r["id"]) for r in conflicts])
+            return {"id": mid, "kind": kind, "text": text, "agent": agent, "project": project, "created": now, "key": key or None,
+                    "tentative": 1 if tentative else None, "replaced": old["id"] if old else None,
+                    "related": [r for r in related if not old or r["id"] != old["id"]]}
+
+        return self._write(write)
 
     def remember_many(self, items: list[dict], agent: str = "import") -> dict:
         """bulk import: [{text, kind?, agent?, project?, created?}], embedded in batches. exact duplicates skipped."""
@@ -348,10 +552,11 @@ class Store:
                 rows.append((kind, text, it.get("agent") or agent, it.get("project") or "", int(it.get("created") or now),
                              " ".join(str(it.get("key") or "").lower().split()) or None))
         vectors = self.embed([r[1] for r in rows]) if rows else []
+        ids = self._write(lambda: self._insert(rows, vectors)) if rows else []
         with self.lock:
-            ids = self._insert(rows, vectors) if rows else []
             self.vectors.flush()
-            self._profile()
+            self.wal = 0
+        self._profile()
         return {"added": len(ids), "skipped": len(items) - len(ids)}
 
     def recall(self, query: str, kind: str = "", agent: str = "", project: str = "", k: int = 8, now: int = 0) -> list[dict]:
@@ -394,21 +599,15 @@ class Store:
 
     def forget(self, id: int) -> dict:
         id = int(id)
-        with self.lock:
+
+        def write():
             row = self._rows([id]).get(id)
             if not row:
                 raise KeyError(f"no memory #{id}")
-            self.db.execute("BEGIN IMMEDIATE")
-            try:
-                self._retire(id, None, 0)
-                self.db.execute("COMMIT")
-            except BaseException:
-                self.db.execute("ROLLBACK")
-                raise
-            self._compact()
-            if row["kind"] == "long_term":
-                self._profile()
-        return row
+            self._retire(id, None, 0)
+            return row
+
+        return self._write(write)
 
     def review(self, project: str = "", limit: int = 20) -> list[list[dict]]:
         """groups of current memories that are probably about the same thing, oldest first in each group.
@@ -429,6 +628,60 @@ class Store:
                 found.append(sorted([r, *(by_id[j] for j in near)], key=lambda m: m["id"]))
         return found[:max(1, min(int(limit), 100))]
 
+    def confirm(self, id: int) -> dict:
+        """someone checked memory #id and it holds: promote it from tentative, clear any "possibly stale" label.
+        review happens at promotion, not at every write (0xEddie's split)."""
+        id = int(id)
+
+        def write():
+            row = self._rows([id]).get(id)
+            if not row or row["superseded_by"]:
+                raise KeyError(f"no current memory #{id}")
+            self.db.execute("UPDATE memories SET tentative = NULL, contested_by = NULL WHERE id = ?", (id,))
+            self._long_term |= row["kind"] == "long_term"
+            return {**row, "tentative": None, "contested_by": None}
+
+        return self._write(write)
+
+    def pending(self, project: str = "", n: int = 50) -> list[dict]:
+        """current memories waiting on a decision: tentative ones, and ones a newer memory seems to contradict."""
+        sql = "SELECT * FROM memories WHERE superseded_by IS NULL AND (tentative IS NOT NULL OR contested_by IS NOT NULL)"
+        rows = self.db.execute(sql + (" AND project = ?" if project else "") + " ORDER BY id LIMIT ?",
+                               [*([project] if project else []), max(1, min(int(n), 500))])
+        return [dict(r) for r in rows]
+
+    def changes(self, since: int = 0, project: str = "", days: float = 7) -> list[dict]:
+        """what changed: every supersession since a time (ms, default `days` back), oldest first, as {old, new}.
+        the "what used to be true, what is true now" view the temporal questions ask for, with no llm."""
+        since = int(since or time.time() * 1000 - days * 86_400_000)
+        sql = "SELECT * FROM memories WHERE superseded_at >= ?" + (" AND project = ?" if project else "") + " ORDER BY superseded_at"
+        olds = [dict(r) for r in self.db.execute(sql, [since, *([project] if project else [])])]
+        news = self._rows(o["superseded_by"] for o in olds)
+        return [{"old": o, "new": news.get(o["superseded_by"])} for o in olds]
+
+    def check(self, text: str, project: str = "", k: int = 3) -> list[dict]:
+        """does this text (a diff, a plan, an answer) contradict a current memory? each line or sentence is matched
+        to the memories closest to it and run through the same no-llm check as remember. a flag, never a verdict:
+        it catches changed values and flipped negations, not a decision broken in other words."""
+        chunks = list(dict.fromkeys(c.strip(" \t+-*>#") for c in re.split(r"\n|(?<=[.!?])\s+", text)))
+        chunks = [c for c in chunks if len(WORD.findall(c)) >= 3][:300]  # shortcut: first 300 lines, enough for a pr diff
+        if not chunks:
+            return []
+        out, seen = [], set()
+        for c, v in zip(chunks, self.embed(chunks, query=True)):
+            words = {w for w in WORD.findall(c.lower()) if w not in STOP and not w.isdigit()}
+            # shortcut: 0.6 cosine and 2 shared words are unmeasured guesses for diff-line vs note; tune on real diffs
+            near = {i for i, s in self._dense(v, "", k) if s >= 0.6} | {i for i, _ in self._words(c, "", k)}
+            for i, m in self._rows(near).items():
+                if project and m["project"] not in (project, ""):
+                    continue
+                shared = words & {w for w in WORD.findall(m["text"].lower()) if w not in STOP and not w.isdigit()}
+                why = len(shared) >= 2 and contradicts(c, m["text"])
+                if why and (c, i) not in seen:
+                    seen.add((c, i))
+                    out.append({"line": c, "memory": m, "reason": why})
+        return out
+
     def export(self) -> list[dict]:
         """everything, superseded versions included, oldest first. `import` reads it back."""
         return [dict(r) for r in self.db.execute("SELECT * FROM memories ORDER BY id")]
@@ -436,16 +689,19 @@ class Store:
     def context(self, project: str = "", query: str = "") -> str:
         """what an agent should know at session start: the pinned long-term tier, then this project."""
         parts = []
-        core = self.recent(50, kind="long_term")
+        core = [m for m in self.recent(50, kind="long_term") if not m["tentative"]]
         if core:
             parts.append("long-term memory (about the user, from every agent):\n" + "\n".join(map(line, core)))
         mine = self.recent(15, project=project) if project else []
-        mine = [m for m in mine if m["kind"] != "long_term"]
+        mine = [m for m in mine if m["kind"] != "long_term" and not m["tentative"]]  # unreviewed notes wait for recall
         if query:
             seen = {m["id"] for m in core + mine}
-            mine += [m for m in self.recall(query, k=8) if m["id"] not in seen and m["kind"] != "episodic"]
+            mine += [m for m in self.recall(query, k=8) if m["id"] not in seen and m["kind"] != "episodic" and not m["tentative"]]
         if mine:
             parts.append(f"memory for {project or 'this session'} (newest first, any agent):\n" + "\n".join(map(line, mine)))
+        waiting = len(self.pending(project))
+        if waiting:
+            parts.append(f"{waiting} memories wait on a decision (tentative or contradicted): qenlo-memory pending")
         return "\n\n".join(parts)
 
     def stats(self) -> dict:
@@ -457,6 +713,7 @@ class Store:
         return {
             "memories": s.live_rows,
             "superseded": self.db.execute("SELECT COUNT(*) FROM memories WHERE superseded_by IS NOT NULL").fetchone()[0],
+            "pending": len(self.pending(n=500)),
             "by_agent": count("agent"),
             "by_kind": count("kind"),
             "last_hour": since(3_600_000),
@@ -472,6 +729,6 @@ class Store:
         }
 
     def close(self):
-        with self.lock:
+        with self.wlock, self.lock:
             self.vectors.close()
             self.db.close()

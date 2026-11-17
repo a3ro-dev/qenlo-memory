@@ -127,6 +127,34 @@ memories saved before any of this are append-only. `qenlo-memory review` groups 
 
 `qenlo-memory export` writes everything as json lines, replaced versions included, and `qenlo-memory import <file>` reads that back, or a mem0 export.
 
+### conflicts, races and unreviewed notes (0.5)
+
+0.4 left one thing to the writer: noticing. two unlinked notes that disagree both stayed live, and nothing told a reader which one was current. 0.5 adds the checks that need no model:
+
+- **contradictions are flagged at write time.** each related memory goes through a slot check, the cheap symbolic step LatticeMind and MEMOIR run before any LLM: the same word followed by a different value (`port 7437` vs `port 7438`), or, in short notes, one saying "not" where the other doesn't. a hit prints as `CONFLICT`, and the older memory stays live labelled `possibly stale: newer #N disagrees`, in recall, recent and session context. it's a flag, not a ruling. the writer settles it with `--replaces`, `forget` or `confirm`. `--strict` refuses the write instead.
+- **compare-and-swap.** `--key K --expect <id you read>` saves only if the key still points at that id (`--expect 0` means it was empty). otherwise nothing is saved and the reply names the current value and who wrote it. `--replaces` on a memory someone already replaced is refused the same way. this closes the lost update the lock never did: the lock stopped corruption, not two agents both overwriting what they read.
+- **tentative vs trusted.** `--tentative` saves a guess that's searchable but kept out of session-start context. `confirm <id>` promotes it. review happens at promotion, not on every write. `pending` lists everything waiting on a decision, and session context says how many there are.
+- **what changed.** `changes --days 7` lists every replaced memory next to its replacement.
+- **checking work against memory.** `git diff | qenlo-memory check` runs every line through the same slot check against the closest memories, and exits 1 on a hit, so CI or a hook can stop on it. it catches changed values and flipped negations. it doesn't catch a decision broken in other words.
+
+measured on my real store: of the 49 near-duplicate pairs `review` finds, the first, naive version of the check flagged 37, almost all false (dates, hashes, counts). the slot version flags 1, and that one is borderline. I haven't measured recall on real contradictions yet, so expect misses: the check is tuned to stay quiet.
+
+a stress test (8 agents × 25 writes against the store the daemon serves, half of them racing on one key with `--expect`) found a real 0.4 bug on its first run: request threads shared one sqlite connection outside the lock, and under concurrent reads and writes sqlite failed with `bad parameter or other API misuse`. every statement is serialised now. the test checks that sqlite, fts5 and qenlo agree on the row count, that no compare-and-swap winner is lost from the history chain, and that the store reopens cleanly. it runs in `tests/test_concurrency.py`, with no ollama needed.
+
+then 100 agents at once, through the real daemon and real embeddings, on a copy of my store (`research/src/load.py`). that found two more 0.4 limits and 0.5 fixes both:
+
+- **100 agents connecting at the same moment got connections reset.** python's http server keeps a backlog of 5 pending connections, and windows resets the rest. 71 of 1,000 simultaneous writes never arrived. the backlog is 1,024 now: 1,000 out of 1,000, three runs out of three.
+- **writes queued behind the disk.** each write synced sqlite's rollback journal and wrote its own qenlo WAL file, about 7.5 ms, so 100 writers waited about 0.9 s each before any embedding. now writers that arrive together share one sqlite transaction (a savepoint each, so one writer's conflict undoes only its own write) and one qenlo batch, and sqlite runs in WAL mode. the store itself went from 109 to 1,865 writes/s from 100 threads. ollama also takes embed requests one at a time, so concurrent embeds are pooled into one request.
+
+| 100 agents, real daemon + ollama | calls | failures | calls/s | p50 |
+|---|---|---|---|---|
+| mixed sessions, 0.4 write path | 3,259 | 0 | 48.9 | 1.9 s |
+| mixed sessions, 0.5 | 3,259 | 0 | 79.5 | 1.13 s |
+| all 100 writing 10 each at once, 0.5 | 1,000 | 0 | ~75 | 1.2 s |
+| mixed, realistic pace (≤5 s between calls) | 1,315 | 0 | | recall 197 ms |
+
+what's left is ollama: about 100 embeds/s on my rtx 4050 laptop, and a write has to embed its text. after every run, sqlite, fts5 and qenlo agree on the row count, no key has two current values, and no history chain forks.
+
 ### four kinds of memory
 
 | kind | what goes in it | example |
@@ -230,7 +258,9 @@ qenlo was alpha when this started, and this project ran into three of its edges.
 - the antigravity app and the antigravity ide send the same client name. `agy` is told apart by its parent process. the other two both show up as `antigravity`.
 - memories written from a shell whose harness sets none of the known variables show up as `by cli` unless the agent passes `--agent`.
 - secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.
-- there's no consolidation, reranker or llm in the loop. updates are linked by the agent, not detected by the store; the store only points at the likely candidates.
+- there's no consolidation, reranker or llm in the loop. updates are linked by the agent. the store flags likely contradictions with a slot check, but it can't tell a contradiction stated in other words, and it never resolves one by itself.
+- `check` flags. it doesn't enforce. nothing blocks an agent from acting against a stored decision unless you wire `check` into CI or a hook yourself.
+- the 0.5 features don't change recall ranking, so the 0.4 benchmark numbers stand as they are. multi-session (48.9%) and temporal (62.4%) answers are still the weak spots. they're a readout problem, see `research/findings.md`.
 
 ## the site
 

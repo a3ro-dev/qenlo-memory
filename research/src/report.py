@@ -92,7 +92,7 @@ for f in sorted(DATA.glob("qa_*.jsonl")):
     qa.append([f.stem[3:], str(len(good)), f"{100 * statistics.mean(r['ok'] for r in good):.1f}",
                " · ".join(f"{k.replace('single-session-', 'ss-')} {100 * statistics.mean(v):.0f}" for k, v in sorted(by.items()))])
 if qa:
-    sections.append("<h2>LongMemEval-S QA (reader nemotron-3-ultra no-think, judge minimax-m3.1-flash)</h2>" +
+    sections.append("<h2>LongMemEval-S QA (reader nemotron-3-ultra no-think; judge per run in results.jsonl: the all-500 run used nemotron-3.5-lightning-30b, earlier partial runs minimax-m3.1-flash or nemotron-3-ultra)</h2>" +
                     table(["config", "n answered", "accuracy %", "by type"], qa,
                           "partial runs show what has been answered so far. published (GPT-4o judge): supermemory 85.2, EdgeMem 60.0 (gpt-4o-mini reader)."))
 

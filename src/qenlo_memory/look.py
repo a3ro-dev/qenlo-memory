@@ -39,7 +39,9 @@ def memory(m: dict) -> str:
     day = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["created"] / 1000))
     score = f"{m['score']:.2f}" if "score" in m else ""
     gone = f"replaced by #{m['superseded_by']}" if m.get("superseded_by") else ""
-    meta = " · ".join(filter(None, [m["kind"].replace("_", " "), m["agent"], m["project"], day, score, gone]))
+    flags = ["tentative" if m.get("tentative") else "", f"possibly stale, #{m['contested_by']} disagrees" if m.get("contested_by") else "",
+             f"conflict: {m['conflict']}" if m.get("conflict") else ""]
+    meta = " · ".join(filter(None, [m["kind"].replace("_", " "), m["agent"], m["project"], day, score, gone, *flags]))
     head = f"{paint('●', KIND.get(m['kind'], DIM))} {paint('#' + str(m['id']), BOLD)}  {paint(meta, DIM)}"
     body = textwrap.wrap((f"[{m['key']}] " if m.get("key") else "") + " ".join(m["text"].split()), width() - 7) or [""]
     shown = [f"  {paint('⎿', DIM)}  {body[0]}", *(f"     {s}" for s in body[1:MAX_LINES])]

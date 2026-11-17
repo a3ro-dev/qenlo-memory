@@ -14,13 +14,17 @@ run these in your shell. they talk to a small local daemon that starts itself.
 | command | use it for |
 | --- | --- |
 | `qenlo-memory recall "<query>" [--kind K] [--agent A] [--project P] [-k 8]` | search by meaning and by exact words (names, versions, paths). time words like "last week" or "in september" narrow it to that time. leave filters off to search every agent's memories |
-| `qenlo-memory remember "<text>" --kind K [--project P] [--replaces ID]` | save one self-contained memory. it prints related memories that may now be stale. your agent name is detected from your shell; pass `--agent <harness>` if it comes out as `cli` |
+| `qenlo-memory remember "<text>" --kind K [--project P] [--replaces ID] [--key K --expect ID] [--tentative] [--strict]` | save one self-contained memory. it prints related memories that may now be stale, and a CONFLICT block for ones it seems to contradict. your agent name is detected from your shell; pass `--agent <harness>` if it comes out as `cli` |
+| `qenlo-memory pending [--project P]` | memories waiting on a decision: tentative ones, and ones marked "possibly stale" because a newer memory disagrees |
+| `qenlo-memory confirm <id>` | you checked it and it holds: promotes a tentative memory, clears a "possibly stale" label |
+| `qenlo-memory changes [--days 7] [--project P]` | what was replaced lately, old value next to new. use it for "what changed" questions |
+| `git diff \| qenlo-memory check [--project P]` | flags lines of a diff, plan or answer that contradict a stored memory (a changed value, a flipped "not"). exit 1 if any. a flag, not a verdict |
 | `qenlo-memory history <id>` | every version of a memory: what it replaced and what replaced it |
 | `qenlo-memory review [--project P]` | groups of memories that look like the same fact written twice. link the stale ones with `--replaces` |
 | `qenlo-memory recent [-n 20] [--kind K] [--agent A] [--project P]` | newest first. good for "what was i doing" and catching up after another agent |
 | `qenlo-memory forget <id>` | delete a memory that is wrong or stale. it's gone for good |
 
-if you have `qenlo-memory` MCP tools (`recall`, `remember`, `recent`, `history`, `forget`), they are the same commands with the same arguments. use whichever you have.
+if you have `qenlo-memory` MCP tools (`recall`, `remember`, `recent`, `history`, `review`, `pending`, `confirm`, `changes`, `check`, `forget`), they are the same commands with the same arguments. use whichever you have.
 
 `qenlo-memory export > memories.jsonl` and `qenlo-memory import memories.jsonl` move a memory between machines (import also reads mem0 exports).
 
@@ -63,7 +67,12 @@ stale memories are worse than none: an old port or a reversed decision keeps com
 - `remember` prints related memories after it saves. read them. if your new memory updates one (same subject, new value), run the same `remember` again with `--replaces <that id>`. it links them without saving twice.
 - if you already know the old id, pass `--replaces <id>` the first time.
 - for facts that will change (ports, versions, current status, who owns what), pass `--key <subject.attribute>`, like `--key staging.db.port`. the next memory with the same key in the same project replaces it, no id needed. reuse keys you see in recall results (`[staging.db.port] ...`).
-- when the user asks you to tidy memory, run `qenlo-memory review` and link what's stale.
+- when two agents may write the same key, pass `--expect <id you read>` (`--expect 0` if the key had no memory). if someone changed it since, nothing is saved and you're told the current value: read it and decide again instead of overwriting their write. `--replaces` already works this way.
+- if `remember` prints CONFLICT, don't leave it: `--replaces` the one yours updates, `forget` one that was never true, or `confirm <id>` if both really hold. `--strict` refuses the write instead of flagging it.
+- a guess, a hypothesis, or a finding you haven't verified goes in with `--tentative`. it's searchable but stays out of session-start context until someone runs `confirm <id>`.
+- a memory marked `possibly stale: newer #N disagrees` in results is contested. trust it less than #N, and settle it if you can.
+- before you ship a change that touches a stored decision, run `git diff | qenlo-memory check`.
+- when the user asks you to tidy memory, run `qenlo-memory review` and `qenlo-memory pending`, and settle what's there.
 - the old memory leaves recall and recent, and `history <id>` still shows it with "replaced by #new". use `forget` only for memories that were never true.
 
 ## never

@@ -3,7 +3,7 @@
 import pytest
 from qenlo import QenloError
 
-from qenlo_memory.store import COMPACT_EVERY, Embedder, Store, redact
+from qenlo_memory.store import COMPACT_EVERY, Conflict, Embedder, Store, contradicts, redact
 
 
 @pytest.fixture(scope="module")
@@ -111,8 +111,8 @@ def test_update_and_history(tmp_path, embed):
     assert [m["id"] for m in s.history(old["id"])] == [old["id"], new["id"]] == [m["id"] for m in s.history(new["id"])]
     third = s.remember("the daemon port moved again, to 7440", "semantic", "cursor", replaces=new["id"])
     assert third["replaced"] == new["id"] and [m["id"] for m in s.history(old["id"])] == [old["id"], new["id"], third["id"]]
-    with pytest.raises(KeyError):
-        s.remember("anything", replaces=old["id"])  # only a current memory can be replaced
+    with pytest.raises(Conflict, match="already replaced by"):
+        s.remember("anything", replaces=old["id"])  # a lost update: someone replaced it after this writer read it
     assert s.stats()["superseded"] == 2 and s.stats()["memories"] == 1
     s.close()
     s = Store(tmp_path, embed)  # restart: superseded memories stay out of both indexes
@@ -168,4 +168,49 @@ def test_review(tmp_path, embed):
     assert [[m["id"] for m in g] for g in s.review()] == [[a["id"], b["id"]]]
     s.remember("motherboard v1.0.0 is deployed to prod", replaces=a["id"])
     assert s.review() == []
+    s.close()
+
+
+def test_contradicts():
+    assert contradicts("the daemon listens on port 7438", "the daemon listens on port 7437")
+    assert contradicts("motherboard v1.0.0 is deployed to prod", "motherboard v1.0.0 is not merged to prod yet")
+    assert not contradicts("the daemon listens on port 7437 on localhost", "the daemon listens on port 7437")
+    assert not contradicts("use uv for python deps", "use uv to install python deps")
+    assert not contradicts("agent 1 wrote note 1 about the build cache", "agent 5 wrote note 5 about the build cache")
+    assert contradicts("retry the upload 3 times", "retry the upload 5 times")
+
+
+def test_conflicts_cas_and_tiers(tmp_path, embed):
+    """0.5: contradictions are flagged and labelled at write time, stale reads are refused, guesses wait for review."""
+    s = Store(tmp_path, embed)
+    a = s.remember("the qenlo-memory daemon listens on port 7437", project="qm")
+    b = s.remember("the qenlo-memory daemon listens on port 7438", project="qm")
+    assert [m["id"] for m in b["related"] if m["conflict"]] == [a["id"]]
+    assert s.recall("which port does the daemon use", k=2)[-1]["contested_by"] == b["id"]  # both live, old one labelled
+    assert "possibly stale" in __import__("qenlo_memory.store").store.line(s._rows([a["id"]])[a["id"]])
+    assert [m["id"] for m in s.pending()] == [a["id"]]
+    with pytest.raises(Conflict, match="contradict"):
+        s.remember("the qenlo-memory daemon listens on port 9000", project="qm", strict=True)
+    s.remember("the qenlo-memory daemon listens on port 7438", project="qm", replaces=a["id"])  # resolved by linking
+    assert s.pending() == [] and [c["old"]["id"] for c in s.changes()] == [a["id"]]
+
+    # compare-and-swap on a key: two agents read the same value, the second write is refused, not lost
+    k = s.remember("release branch is main", key="release.branch", expect=0)
+    with pytest.raises(Conflict, match="changed since you read it"):
+        s.remember("release branch is dev", key="release.branch", expect=0)
+    k2 = s.remember("release branch is trunk", key="release.branch", expect=k["id"])
+    with pytest.raises(Conflict):
+        s.remember("release branch is dev", key="release.branch", expect=k["id"])
+    assert [m["id"] for m in s.history(k2["id"])] == [k["id"], k2["id"]]
+
+    # tentative: searchable, not in session context until confirmed
+    t = s.remember("the flaky ci test is probably caused by a timezone bug", "semantic", project="qm", tentative=True)
+    assert t["id"] in [m["id"] for m in s.recall("flaky ci test")] and "timezone" not in s.context("qm")
+    assert "wait on a decision" in s.context("qm")
+    s.confirm(t["id"])
+    assert "timezone" in s.context("qm") and s.pending() == []
+
+    # check: a diff line that changes a stored value is flagged
+    hits = s.check("+ the qenlo-memory daemon listens on port 9999\n+ unrelated refactor of the logging helpers", project="qm")
+    assert [h["memory"]["id"] for h in hits] == [b["id"]] and hits[0]["reason"].startswith("port:")
     s.close()

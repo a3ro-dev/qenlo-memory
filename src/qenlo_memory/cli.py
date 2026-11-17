@@ -15,7 +15,8 @@ from pathlib import Path
 HOME = Path(os.environ.get("QENLO_MEMORY_HOME", Path.home() / ".qenlo-memory"))
 PORT = int(os.environ.get("QENLO_MEMORY_PORT", "7437"))
 URL = f"http://127.0.0.1:{PORT}"
-OPS = {"remember", "remember_many", "recall", "recent", "history", "review", "forget", "export", "stats", "context"}
+OPS = {"remember", "remember_many", "recall", "recent", "history", "review", "forget", "export", "stats", "context",
+       "confirm", "pending", "changes", "check"}
 # a hidden console instead of none: children of a console-less process get a fresh, visible window.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -43,6 +44,8 @@ def serve() -> None:
     # bind before opening the store, so a second daemon started by a race fails fast on the port.
     # on windows SO_REUSEADDR would let both bind the same port, so turn it off there.
     ThreadingHTTPServer.allow_reuse_address = sys.platform != "win32"
+    # the default backlog is 5: a hundred agents connecting at once got their connections reset (research/src/load.py)
+    ThreadingHTTPServer.request_queue_size = 1024
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     from .store import Store
 
@@ -79,7 +82,9 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, KeyError, TypeError) as e:
             self.reply(400, {"error": str(e).strip("'\"")})
         except Exception as e:  # keep the daemon up, tell the caller what broke
-            self.reply(500, {"error": repr(e)})
+            from .store import Conflict
+
+            self.reply(409, {"error": str(e)}) if isinstance(e, Conflict) else self.reply(500, {"error": repr(e)})
 
 
 def alive() -> bool:
@@ -166,13 +171,34 @@ def show(rows: list[dict]) -> str:
 
 def saved(r: dict) -> str:
     """the plain reply to a remember, for agents: what happened, then anything it may have made stale."""
+    from .store import line
+
     head = f"already remembered as #{r['id']} (by {r['agent']})" if r.get("duplicate") else f"remembered #{r['id']}"
     if r.get("replaced"):
         head += f", replacing #{r['replaced']} (see: qenlo-memory history {r['id']})"
-    if r.get("related"):
+    if r.get("tentative"):
+        head += f" as tentative: kept out of session context until someone runs confirm {r['id']}"
+    clash = [m for m in r.get("related") or [] if m.get("conflict")]
+    if clash:
+        head += (f"\nCONFLICT: #{r['id']} seems to contradict these; they stay live, marked possibly stale. if it updates"
+                 " one, run the same remember again with --replaces <id>; if both hold, confirm <id>:\n"
+                 + "\n".join(f"{line(m)}  <- {m['conflict']}" for m in clash))
+    if rest := [m for m in r.get("related") or [] if not m.get("conflict")]:
         head += (f"\nrelated memories. if #{r['id']} updates one of them, run the same remember again with"
-                 " --replaces <id>; if one is simply wrong, forget it:\n" + show(r["related"]))
+                 " --replaces <id>; if one is simply wrong, forget it:\n" + show(rest))
     return head
+
+
+def changed(rows: list[dict]) -> str:
+    from .store import line
+
+    return "\n\n".join(f"was: {line(c['old'])}\nnow: {line(c['new']) if c['new'] else '(forgotten)'}" for c in rows) or "nothing changed."
+
+
+def checked(hits: list[dict]) -> str:
+    from .store import line
+
+    return "\n\n".join(f"line: {h['line']}\nvs:   {line(h['memory'])}\nwhy:  {h['reason']}" for h in hits) or "no conflicts with stored memories found."
 
 
 def mcp_server(agent: str) -> None:
@@ -194,7 +220,8 @@ def mcp_server(agent: str) -> None:
         return name
 
     @app.tool()
-    def remember(text: str, ctx: Context, kind: str = "semantic", project: str = "", replaces: int = 0, key: str = "") -> str:
+    def remember(text: str, ctx: Context, kind: str = "semantic", project: str = "", replaces: int = 0, key: str = "",
+                 expect: int = -1, tentative: bool = False, strict: bool = False) -> str:
         """Save one memory to the user's shared memory (every coding agent they use reads it).
         kind: episodic = something that happened (a decision, a fix, a session outcome),
         semantic = a fact (about the user, a project, a tool), procedural = how to do something
@@ -204,8 +231,16 @@ def mcp_server(agent: str) -> None:
         updates (a changed value, a reversed decision): the old one leaves search and stays in history.
         key = a short stable name for what the fact is about, like 'staging.db.port' or 'release.steps':
         saving a new memory with the same key (in the same project) replaces the old one automatically.
-        The reply lists related memories; if the new one updates one of them, call again with replaces."""
-        r = call("remember", text=text, kind=kind, agent=who(ctx), project=project or here, replaces=replaces or None, key=key)
+        expect = with key: the id you read as current for that key (0 if it had none); if another agent changed
+        it since, nothing is saved and you are told what it is now. tentative = a guess or unverified finding:
+        searchable, but kept out of session-start context until confirmed. strict = refuse to save if it seems
+        to contradict a current memory. The reply lists related memories and flags CONFLICTs; if the new one
+        updates one of them, call again with replaces."""
+        try:
+            r = call("remember", text=text, kind=kind, agent=who(ctx), project=project or here, replaces=replaces or None,
+                     key=key, expect=None if expect < 0 else expect, tentative=tentative, strict=strict)
+        except RuntimeError as e:
+            return f"not saved: {e}"
         return saved(r)
 
     @app.tool()
@@ -231,6 +266,28 @@ def mcp_server(agent: str) -> None:
         """Groups of current memories that are probably about the same thing, oldest first. For each group,
         if a later memory updates an earlier one, remember the later text again with replaces=<earlier id>."""
         return "\n\n".join(show(g) for g in call("review", project=project)) or "nothing looks duplicated."
+
+    @app.tool()
+    def confirm(id: int) -> str:
+        """Memory #id was checked and holds: promote it from tentative and clear any 'possibly stale' label."""
+        return f"confirmed #{call('confirm', id=id)['id']}"
+
+    @app.tool()
+    def pending(project: str = "") -> str:
+        """Memories waiting on a decision: tentative ones and ones a newer memory seems to contradict.
+        For each: replace it, forget it, or confirm it."""
+        return show(p) if (p := call("pending", project=project)) else "nothing waits on a decision."
+
+    @app.tool()
+    def changes(days: float = 7, project: str = "") -> str:
+        """What changed in the last `days`: each old memory and the one that replaced it."""
+        return changed(call("changes", days=days, project=project))
+
+    @app.tool()
+    def check(text: str, project: str = "") -> str:
+        """Check a diff, plan or answer against stored memories before acting on it. Flags lines that seem to
+        contradict a current memory (a changed value, a flipped 'not'). A flag, not a verdict."""
+        return checked(call("check", text=text, project=project or here))
 
     @app.tool()
     def forget(id: int) -> str:
@@ -282,6 +339,17 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--agent", default=shell_agent())
     r.add_argument("--replaces", type=int, default=None, help="id of the memory this one updates")
     r.add_argument("--key", default="", help="stable name for what this is about (staging.db.port); same key replaces")
+    r.add_argument("--expect", type=int, default=None, help="with --key: the id you read as current (0 = none); refuse if it changed")
+    r.add_argument("--tentative", action="store_true", help="unverified: keep it out of session context until confirmed")
+    r.add_argument("--strict", action="store_true", help="refuse to save if it seems to contradict a current memory")
+    sub.add_parser("confirm", help="promote a tentative memory, clear a possibly-stale label").add_argument("id", type=int)
+    sub.add_parser("pending", help="memories waiting on a decision (tentative or contradicted)").add_argument("--project", default="")
+    ch = sub.add_parser("changes", help="what was replaced lately, old and new")
+    ch.add_argument("--days", type=float, default=7)
+    ch.add_argument("--project", default="")
+    ck = sub.add_parser("check", help="flag lines of a diff/plan/answer (file or - for stdin) that contradict memories; exit 1 if any")
+    ck.add_argument("file", nargs="?", default="-")
+    ck.add_argument("--project", default=None)
     q = sub.add_parser("recall")
     q.add_argument("query")
     q.add_argument("-k", type=int, default=8)
@@ -325,7 +393,11 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as e:  # a memory hiccup must never block the user's prompt
             print(f"qenlo-memory hook skipped: {e}", file=sys.stderr)
     elif a.cmd == "remember":
-        r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project, replaces=a.replaces, key=a.key)
+        try:
+            r = call("remember", text=a.text, kind=a.kind, agent=a.agent, project=a.project, replaces=a.replaces, key=a.key,
+                     expect=a.expect, tentative=a.tentative, strict=a.strict)
+        except RuntimeError as e:
+            raise SystemExit(f"not saved: {e}") from None
         if not look.COLOR:
             print(saved(r))
         else:
@@ -354,6 +426,17 @@ def main(argv: list[str] | None = None) -> None:
         current = [m for m in items if not m.get("superseded_by")]  # history doesn't survive an import, only what's true now
         r = call("remember_many", items=current, agent=a.agent)
         print(f"imported {r['added']} memories, skipped {r['skipped']} already there")
+    elif a.cmd == "confirm":
+        print(f"confirmed #{call('confirm', id=a.id)['id']}")
+    elif a.cmd == "pending":
+        print(rows(w) if (w := call("pending", project=a.project)) else "nothing waits on a decision.")
+    elif a.cmd == "changes":
+        print(changed(call("changes", days=a.days, project=a.project)))
+    elif a.cmd == "check":
+        text = sys.stdin.read() if a.file == "-" else Path(a.file).read_text(encoding="utf-8", errors="replace")
+        hits = call("check", text=text, project=project_of(None) if a.project is None else a.project)
+        print(checked(hits))
+        raise SystemExit(1 if hits else 0)
     elif a.cmd == "forget":
         r = call("forget", id=a.id)
         print(look.done(f"forgot #{r['id']}", r["text"][:70]) if look.COLOR else f"forgot #{r['id']}")

@@ -21,7 +21,7 @@ goal set by akshat: best in the niche (local, no LLM in the memory process, tiny
    the LoCoMo suites (dense alone spreads them over ~8 points). the 67 MB 33m model captures most of what 15x larger
    ones add; it is the candidate default (stage B pending). all-minilm and granite-30m sit below the default.
 5. **the eval itself:** NIM free tier, reader nemotron-3-ultra with thinking off (a big non-reasoning reader, the role
-   GPT-4o plays in published setups), judge minimax-m3.1-flash. one key sustains ~13-22 calls/min; reasoning models
+   GPT-4o plays in published setups), judge minimax-m3.1-flash at first, nemotron-3.5-lightning-30b for the all-500 run (results.jsonl records the judge per run). one key sustains ~13-22 calls/min; reasoning models
    silently spend the answer budget; the harness rejects substituted models and reasoning replies.
 
 6. **final numbers (0.4, published).** LongMemEval-S retrieval with the shipped 33m default beats EdgeMem on all four
@@ -117,3 +117,38 @@ the update test (20 facts that change, 200 distractors, the real Store):
 ## open questions
 - LongMemEval multi-session (84%) and temporal (80%) are the weakest categories; both want aggregation across
   sessions, which is a reading problem more than a retrieval one.
+
+## 0.5: conflicts, races, review (2026-11-17)
+
+8. **the contradiction check has to be slot-aligned or it's noise.** on the 49 near-duplicate pairs `review` finds in
+   my real store (a stand-in for "same subject"), "any differing number or negation" flagged 37, nearly all false
+   (dates, hashes, run counts in long notes). requiring the same content word before a different value, values of the
+   same shape, and negation only in notes of 30 words or less: 1 flag, borderline. recall on real contradictions is
+   not measured; synthetic cases (port, retry count, deployed vs not merged) are in tests/test_smoke.py.
+9. **concurrency was "design yes, battle-tested no", and the test proved why.** 8 threads x 25 writes on the store the
+   daemon serves failed at once in 0.4: sqlite3 cursors interleaved on the shared connection ("bad parameter or other
+   API misuse"). fixed by running and fetching each statement under a lock. after the fix: 200 notes + a CAS race on
+   one key, sqlite = fts5 = qenlo live rows, every CAS winner in one unbroken history chain, clean reopen, 3/3 runs.
+10. **0.5 does not change recall ranking**, so the 0.4 retrieval and QA numbers stand. the state labels (current,
+   possibly stale, tentative) are what A-TMA (arXiv:2607.01935) found helps the reader on conflict-heavy questions; not
+   yet measured here.
+11. **100 concurrent agents (research/src/load.py, 2026-11-17).** real daemon, real ollama (arctic-embed:33m, RTX
+   4050 laptop), store seeded with a copy of my 293 real memories. each agent runs sessions: context, 3 recalls, a
+   note (20% tentative), 40% a read-then-`--expect` write on 10 shared hot keys, 20% a `--replaces` race on the same
+   seeded memory, 15% a diff `check`, 5% a forget.
+   - burst (<=0.2 s between calls), 3,259 calls: 0 failures. 0.5 as first built: 48.9 calls/s, p50 ~1.9 s. ollama runs
+     embed requests one at a time (100 single embeds 2.29 s vs one batch of 100 0.86 s), so the Embedder now pools
+     concurrent calls into one request: 70 calls/s, p50 ~1.25 s. without embedding the store itself does ~1,000
+     recalls/s from 100 threads, so ollama is the ceiling (~115 embeds/s here), not qenlo or sqlite.
+   - realistic pace (<=5 s between calls, still faster than an LLM turn), 1,315 calls: 0 failures, recall p50 197 ms
+     / p95 924 ms, remember p50 172 ms; the p95 tail is all 100 agents starting a session at the same moment.
+   - races: 97 + 6 key writes and 12 replaces lost and were refused (409), none overwrote. after every run: sqlite =
+     fts5 = qenlo live rows, no key with two current values, no forked chain, clean restart; daemon ~76 MB.
+12. **100 simultaneous writers.** two more 0.4 limits. (a) `ThreadingHTTPServer`'s listen backlog is 5: with 100 agents
+   released at once by a barrier, 71/1,000 writes got WinError 10054 (connection reset). backlog 1,024: 1,000/1,000, 3/3
+   runs. (b) a write cost ~7.5 ms of syncs (qenlo add_batch 2.5 ms for its own WAL file, sqlite rollback-journal
+   commit 2.4 ms, a WAL-directory glob 0.9 ms). group commit (one sqlite transaction with a savepoint per writer, one
+   qenlo batch per group, a WAL counter instead of the glob) + sqlite WAL mode: store-only, 100 threads x 10 writes,
+   109 -> 1,865 writes/s, p50 867 -> 53 ms, qenlo WAL files 232 -> 21. through the daemon the write burst runs at ~75/s,
+   which is ollama's embed ceiling here. ollama batch scaling: 1 text 14/s, 32 texts 45/s, 256 texts 101/s, so pooling
+   helps but can't pass ~100/s on this laptop.
