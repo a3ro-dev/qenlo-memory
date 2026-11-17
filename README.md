@@ -129,11 +129,13 @@ memories saved before any of this are append-only. `qenlo-memory review` groups 
 
 ### conflicts, races and unreviewed notes (0.5)
 
+most of 0.5 came out of [a public thread](https://x.com/oanaolt/status/2122721473089642763) where builders pushed on 0.4 (thanks 0xEddie, Sandhya, Jonathan Bui, John Martin and Oana Olteanu).
+
 0.4 left one thing to the writer: noticing. two unlinked notes that disagree both stayed live, and nothing told a reader which one was current. 0.5 adds the checks that need no model:
 
 - **contradictions are flagged at write time.** each related memory goes through a slot check, the cheap symbolic step LatticeMind and MEMOIR run before any LLM: the same word followed by a different value (`port 7437` vs `port 7438`), or, in short notes, one saying "not" where the other doesn't. a hit prints as `CONFLICT`, and the older memory stays live labelled `possibly stale: newer #N disagrees`, in recall, recent and session context. it's a flag, not a ruling. the writer settles it with `--replaces`, `forget` or `confirm`. `--strict` refuses the write instead.
 - **compare-and-swap.** `--key K --expect <id you read>` saves only if the key still points at that id (`--expect 0` means it was empty). otherwise nothing is saved and the reply names the current value and who wrote it. `--replaces` on a memory someone already replaced is refused the same way. this closes the lost update the lock never did: the lock stopped corruption, not two agents both overwriting what they read.
-- **tentative vs trusted.** `--tentative` saves a guess that's searchable but kept out of session-start context. `confirm <id>` promotes it. review happens at promotion, not on every write. `pending` lists everything waiting on a decision, and session context says how many there are.
+- **tentative vs trusted.** `--tentative` saves a guess that's searchable but kept out of session-start context. `confirm <id>` promotes it. a memory marked `newer #N disagrees` needs `confirm <id> --expect N`, and it's refused if a newer disagreement landed while you were reviewing (a race 0xEddie found in 0.5.0). review happens at promotion, not on every write. `pending` lists everything waiting on a decision, and session context says how many there are.
 - **what changed.** `changes --days 7` lists every replaced memory next to its replacement.
 - **checking work against memory.** `git diff | qenlo-memory check` runs every line through the same slot check against the closest memories, and exits 1 on a hit, so CI or a hook can stop on it. it catches changed values and flipped negations. it doesn't catch a decision broken in other words.
 
@@ -260,6 +262,9 @@ qenlo was alpha when this started, and this project ran into three of its edges.
 - secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.
 - there's no consolidation, reranker or llm in the loop. updates are linked by the agent. the store flags likely contradictions with a slot check, but it can't tell a contradiction stated in other words, and it never resolves one by itself.
 - `check` flags. it doesn't enforce. nothing blocks an agent from acting against a stored decision unless you wire `check` into CI or a hook yourself.
+- a possibly-stale label names only the newest note that disagrees. if a third note contradicts it, the label moves to that one; the earlier disagreement is still a live memory but no longer pointed at.
+- the conflict check misses softening: "always" quietly becoming "usually" is not flagged.
+- the 100-agent numbers come from one laptop (RTX 4050, ollama embeddings) and haven't been reproduced elsewhere. `research/src/load.py` reruns them.
 - the 0.5 features don't change recall ranking, so the 0.4 benchmark numbers stand as they are. multi-session (48.9%) and temporal (62.4%) answers are still the weak spots. they're a readout problem, see `research/findings.md`.
 
 ## the site
