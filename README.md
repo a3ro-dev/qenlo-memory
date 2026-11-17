@@ -237,6 +237,13 @@ qenlo-memory remember "the user's laptop has an rtx 4050" --kind semantic
 qenlo-memory remember "staging moved to port 6543" --replaces 31
 qenlo-memory history 31
 qenlo-memory forget 12
+qenlo-memory remember "staging db port is 6543" --key staging.db.port --expect 31
+qenlo-memory remember "maybe the cache is the cause" --tentative
+qenlo-memory pending
+qenlo-memory confirm 44
+qenlo-memory confirm 12 --expect 52      # 0.5.1: refused if a newer disagreement landed during review
+qenlo-memory changes --days 7
+git diff | qenlo-memory check            # exit 1 on a hit
 qenlo-memory export > memories.jsonl
 qenlo-memory stats
 qenlo-memory models

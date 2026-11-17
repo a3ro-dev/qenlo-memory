@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Atkinson+Hyperlegible+Next:wght@400;600&family=Martian+Mono:wght@400;500&display=swap">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"qenlo-memory","applicationCategory":"DeveloperApplication","operatingSystem":"Windows, macOS, Linux","softwareVersion":"0.4.0","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"codeRepository":"https://github.com/a3ro-dev/qenlo-memory","author":{"@type":"Person","name":"Akshat Singh Kushwaha","alternateName":"a3ro-dev","url":"https://github.com/a3ro-dev","sameAs":["https://www.linkedin.com/in/akshat-singh-kushwaha"]}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"qenlo-memory","applicationCategory":"DeveloperApplication","operatingSystem":"Windows, macOS, Linux","softwareVersion":"0.5.1","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"codeRepository":"https://github.com/a3ro-dev/qenlo-memory","author":{"@type":"Person","name":"Akshat Singh Kushwaha","alternateName":"a3ro-dev","url":"https://github.com/a3ro-dev","sameAs":["https://www.linkedin.com/in/akshat-singh-kushwaha"]}}
 </script>
 <script>document.documentElement.classList.add("js")</script>
 </head>
@@ -46,13 +46,13 @@
 
 <section class="hero" id="top" aria-labelledby="hero-title">
   <div class="hero-copy">
-    <p class="ver">0.4.0, apache-2.0</p>
+    <p class="ver">0.5.1, apache-2.0</p>
     <h1 id="hero-title">one memory for every coding agent you run</h1>
     <p class="lede">i use claude code, codex, cursor, gemini cli and copilot, and every one of them used to start from zero. <span class="hi">qenlo-memory is one local store they all read and write,</span> so a fix codex found yesterday shows up in claude code today, labeled by codex.</p>
     <div class="install-slot" data-island="install-hero">
       <pre class="fallback"><code>curl -fsSL https://raw.githubusercontent.com/a3ro-dev/qenlo-memory/main/install.sh | sh</code></pre>
     </div>
-    <p class="facts">no llm inside, 37 ms recall, 52 MB installed, 25 agents wired in one run</p>
+    <p class="facts">no llm inside, 37 ms recall, 52 MB installed, 25 agents wired in one run, 100 agents writing at once with 0 failures</p>
   </div>
   <div class="hero-art">
     <div class="world" data-island="hero-world" role="img" aria-label="a sphere of 243 small cubes, one per memory in the author's store, assembling piece by piece"></div>
@@ -146,10 +146,35 @@ qenlo-memory history 12</code></pre>
   </div>
 </section>
 
+<section class="band" id="conflicts" aria-labelledby="conflicts-title">
+  <div class="split">
+    <div>
+      <h2 id="conflicts-title">when two notes disagree, both get a label</h2>
+      <p>0.4 left the noticing to the writer. two unlinked notes that disagreed both stayed live, and nothing said which one was current. 0.5 adds the checks that need no model. 0.5.1 closes a race in review: <code>confirm &lt;id&gt; --expect N</code> is refused if a newer disagreement landed while you were reviewing, so you never clear a label on a stale read.</p>
+      <dl class="channels">
+        <div><dt>flagged at write</dt><dd>the same word followed by a different value, or a flipped "not" in short notes. the older memory stays live, labelled <q>possibly stale</q>. <code>--strict</code> refuses the write instead.</dd></div>
+        <div><dt>compare-and-swap</dt><dd><code>--key K --expect &lt;id you read&gt;</code> saves only if the key still points at that id. otherwise nothing is saved, and you're told the current value and who wrote it.</dd></div>
+        <div><dt>tentative, then confirmed</dt><dd><code>--tentative</code> keeps a guess searchable but out of session context. <code>confirm</code> promotes it, and <code>pending</code> lists what's still waiting.</dd></div>
+        <div><dt>what changed, and checking work</dt><dd><code>changes --days 7</code> lists each replaced memory next to its replacement. <code>git diff | qenlo-memory check</code> exits 1 when a diff breaks a stored decision.</dd></div>
+      </dl>
+      <p>it's a flag, not a ruling. the check is tuned to stay quiet: on my real store it flagged 1 of 49 near-duplicate pairs, where the naive version flagged 37, almost all false. it misses contradictions stated in other words, and it misses "always" quietly becoming "usually".</p>
+      <p><a class="link" href="https://x.com/oanaolt/status/2122721473089642763">the public thread that shaped 0.5</a></p>
+    </div>
+    <div class="console" data-island="console-conflict">
+      <pre class="fallback"><code>$ qenlo-memory remember "the daemon listens on 7438"
+remembered #52
+CONFLICT: #52 seems to contradict these; they stay live, marked possibly stale.
+#12 semantic | by codex | 2026-10-30 | the daemon listens on 7437
+$ qenlo-memory recall "daemon port"
+#12 semantic | by codex | 2026-10-30 | the daemon listens on 7437 | possibly stale: newer #52 disagrees</code></pre>
+    </div>
+  </div>
+</section>
+
 <section class="band" id="numbers" aria-labelledby="numbers-title">
   <div class="sec-head">
     <h2 id="numbers-title">the numbers, losses included</h2>
-    <p>everything here reproduces from <a href="https://github.com/a3ro-dev/qenlo-memory/tree/main/research">research/</a> in the repo, including the ideas that made things worse.</p>
+    <p>everything here reproduces from <a href="https://github.com/a3ro-dev/qenlo-memory/tree/main/research">research/</a> in the repo, including the ideas that made things worse. 0.5 doesn't change recall ranking, so the 0.4 numbers still hold for 0.5.</p>
   </div>
 
   <div class="chart-block">
@@ -183,6 +208,21 @@ qenlo-memory history 12</code></pre>
         </tbody>
       </table>
     </div>
+  </div>
+
+  <div class="chart-block">
+    <h3>100 agents at once, real daemon and real embeddings</h3>
+    <p>one laptop (rtx 4050, ollama embeddings), on a copy of my store. 0.4 reset 71 of 1,000 simultaneous writes: python's http server kept a backlog of 5 and windows reset the rest. 0.5 raises the backlog to 1,024, shares one sqlite transaction across writers that arrive together, and pools ollama embeds. 1,000 out of 1,000, three runs out of three.</p>
+    <table class="fallback">
+      <caption>100 agents, calls, failures and latency</caption>
+      <thead><tr><th scope="col"></th><th scope="col">calls</th><th scope="col">failures</th><th scope="col">calls/s</th><th scope="col">p50</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">mixed sessions, 0.4 write path</th><td>3,259</td><td>0</td><td>48.9</td><td>1.9 s</td></tr>
+        <tr><th scope="row">mixed sessions, 0.5</th><td>3,259</td><td>0</td><td>79.5</td><td>1.13 s</td></tr>
+        <tr><th scope="row">all 100 writing 10 each at once, 0.5</th><td>1,000</td><td>0</td><td>~75</td><td>1.2 s</td></tr>
+      </tbody>
+    </table>
+    <p>the store alone went from 109 to 1,865 writes/s from 100 threads. after every run, sqlite, fts5 and qenlo agree on the row count, no key has two current values, and no history chain forks. what's left is ollama, about 100 embeds/s on that laptop.</p>
   </div>
 
   <div class="chart-block split">
@@ -279,7 +319,8 @@ qenlo-memory stats</code></pre>
         <li><code>qenlo-memory install --dry-run</code> shows every file it would touch without writing anything.</li>
         <li>it's local and single-user. the daemon only listens on 127.0.0.1 and wants a token from your home folder.</li>
         <li>secret redaction is a regex for common key formats. it's a seatbelt, not a guarantee.</li>
-        <li><code>import</code> reads a mem0 export too, if you're moving over.</li>
+          <li><code>import</code> reads a mem0 export too, if you're moving over.</li>
+        <li>the conflict check is a flag, not a ruling. it misses contradictions stated in other words, and nothing blocks an agent from acting on a stored decision unless you wire <code>check</code> into ci or a hook yourself.</li>
       </ul>
     </div>
   </div>

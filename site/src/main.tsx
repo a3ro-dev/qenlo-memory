@@ -179,6 +179,22 @@ island("console-claude", (el) => {
   return <DitherConsole title="claude code" lines={lines()} class="h-44" />
 })
 
+island("console-conflict", (el) => {
+  const lines = typed(
+    el,
+    [
+      { text: '$ qenlo-memory remember "the daemon listens on 7438"' },
+      { text: "remembered #52", level: "success" },
+      { text: "CONFLICT: #52 seems to contradict these; they stay live, marked possibly stale.", level: "warn" },
+      { text: "#12 semantic | by codex | 2026-10-30 | the daemon listens on 7437" },
+      { text: '$ qenlo-memory recall "daemon port"' },
+      { text: "#12 semantic | by codex | 2026-10-30 | the daemon listens on 7437 | possibly stale: newer #52 disagrees", level: "warn" },
+    ],
+    400,
+  )
+  return <DitherConsole title="qenlo-memory" lines={lines()} class="h-56" />
+})
+
 // ---- recall: three fields adding up, the pointer is the query
 
 const RECALL_GLSL = `
