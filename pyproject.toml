@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qenlo-memory"
-version = "0.5.0"
+version = "0.5.1"
 description = "One local memory for all your coding agents, on the qenlo vector database"
 readme = "README.md"
 requires-python = ">=3.10"
