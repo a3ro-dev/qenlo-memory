@@ -342,7 +342,9 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--expect", type=int, default=None, help="with --key: the id you read as current (0 = none); refuse if it changed")
     r.add_argument("--tentative", action="store_true", help="unverified: keep it out of session context until confirmed")
     r.add_argument("--strict", action="store_true", help="refuse to save if it seems to contradict a current memory")
-    sub.add_parser("confirm", help="promote a tentative memory, clear a possibly-stale label").add_argument("id", type=int)
+    cf = sub.add_parser("confirm", help="promote a tentative memory, clear a possibly-stale label")
+    cf.add_argument("id", type=int)
+    cf.add_argument("--expect", type=int, default=None, help="for a possibly-stale memory: the disagreeing #N you reviewed")
     sub.add_parser("pending", help="memories waiting on a decision (tentative or contradicted)").add_argument("--project", default="")
     ch = sub.add_parser("changes", help="what was replaced lately, old and new")
     ch.add_argument("--days", type=float, default=7)
@@ -427,7 +429,7 @@ def main(argv: list[str] | None = None) -> None:
         r = call("remember_many", items=current, agent=a.agent)
         print(f"imported {r['added']} memories, skipped {r['skipped']} already there")
     elif a.cmd == "confirm":
-        print(f"confirmed #{call('confirm', id=a.id)['id']}")
+        print(f"confirmed #{call('confirm', id=a.id, expect=a.expect)['id']}")
     elif a.cmd == "pending":
         print(rows(w) if (w := call("pending", project=a.project)) else "nothing waits on a decision.")
     elif a.cmd == "changes":

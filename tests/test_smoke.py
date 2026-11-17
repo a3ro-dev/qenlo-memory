@@ -189,6 +189,13 @@ def test_conflicts_cas_and_tiers(tmp_path, embed):
     assert s.recall("which port does the daemon use", k=2)[-1]["contested_by"] == b["id"]  # both live, old one labelled
     assert "possibly stale" in __import__("qenlo_memory.store").store.line(s._rows([a["id"]])[a["id"]])
     assert [m["id"] for m in s.pending()] == [a["id"]]
+    # 0xEddie's race: the reviewer read "#b disagrees", a newer conflict lands mid-review; confirm must not clear it unseen
+    c = s.remember("the qenlo-memory daemon listens on port 7439", project="qm")
+    with pytest.raises(Conflict, match=f"contested by #{c['id']}"):
+        s.confirm(a["id"], expect=b["id"])
+    with pytest.raises(Conflict):
+        s.confirm(a["id"])
+    s.forget(c["id"])
     with pytest.raises(Conflict, match="contradict"):
         s.remember("the qenlo-memory daemon listens on port 9000", project="qm", strict=True)
     s.remember("the qenlo-memory daemon listens on port 7438", project="qm", replaces=a["id"])  # resolved by linking

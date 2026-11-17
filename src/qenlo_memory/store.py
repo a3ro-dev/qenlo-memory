@@ -628,15 +628,19 @@ class Store:
                 found.append(sorted([r, *(by_id[j] for j in near)], key=lambda m: m["id"]))
         return found[:max(1, min(int(limit), 100))]
 
-    def confirm(self, id: int) -> dict:
+    def confirm(self, id: int, expect: int | None = None) -> dict:
         """someone checked memory #id and it holds: promote it from tentative, clear any "possibly stale" label.
-        review happens at promotion, not at every write (0xEddie's split)."""
+        review happens at promotion, not at every write (0xEddie's split). a contested memory needs expect = the
+        disagreeing id the reviewer looked at; if a newer one arrived during the review, nothing changes (0xEddie's race)."""
         id = int(id)
 
         def write():
             row = self._rows([id]).get(id)
             if not row or row["superseded_by"]:
                 raise KeyError(f"no current memory #{id}")
+            if row["contested_by"] and (expect is None or int(expect) != row["contested_by"]):
+                raise Conflict(f"#{id} is contested by #{row['contested_by']}" + (f", not #{expect}" if expect is not None else "")
+                               + f". read #{row['contested_by']}, then confirm {id} --expect {row['contested_by']}")
             self.db.execute("UPDATE memories SET tentative = NULL, contested_by = NULL WHERE id = ?", (id,))
             self._long_term |= row["kind"] == "long_term"
             return {**row, "tentative": None, "contested_by": None}
