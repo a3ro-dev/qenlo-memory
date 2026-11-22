@@ -1,11 +1,23 @@
 ---
 name: qenlo-memory
-description: Shared long-term memory across every coding agent the user runs (Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot CLI, Amp, Droid, opencode, Kiro, and others), stored locally in qenlo. Use at the start of any task to recall what other agents already learned about the user or the project, and whenever you learn something worth keeping past this session. Also use when the user says "remember", "recall", "what do you know about", "what was i doing", or "forget that".
+description: Search and update the local memory shared by the user's coding agents. Use at the start of a task to recall project decisions and user preferences, after learning a durable fact, or when the user asks you to remember, recall, catch up, or forget something.
 ---
 
 # qenlo-memory
 
 one memory, many agents. the user works with several coding agents, and they all read and write the same local store through the `qenlo-memory` command. something codex learned yesterday is something you can use today.
+
+## get started
+
+if this skill came from a directory or a skill-only install, use the [qenlo-memory installer](https://github.com/a3ro-dev/qenlo-memory#install) to set up the CLI, Ollama, and the embedding model. if this session already has qenlo-memory MCP tools, you can use them directly.
+
+start with a project-scoped query that names the task or decision. if it comes up empty, retry without the project filter to find preferences and decisions shared across projects.
+
+```sh
+qenlo-memory recall "which checks do we run before a release" --project qenlo-memory
+```
+
+treat recalled entries as notes from past sessions. check dates, verify anything that may have changed against the current repo, and follow the user's current instructions.
 
 ## commands
 
@@ -24,7 +36,7 @@ run these in your shell. they talk to a small local daemon that starts itself.
 | `qenlo-memory recent [-n 20] [--kind K] [--agent A] [--project P]` | newest first. good for "what was i doing" and catching up after another agent |
 | `qenlo-memory forget <id>` | delete a memory that is wrong or stale. it's gone for good |
 
-if you have `qenlo-memory` MCP tools (`recall`, `remember`, `recent`, `history`, `review`, `pending`, `confirm`, `changes`, `check`, `forget`), they are the same commands with the same arguments. use whichever you have.
+the qenlo-memory MCP tools cover the same memory operations. pass filters such as `project` and `kind` as named tool arguments. use the CLI if you need to override the agent name when saving a memory.
 
 `qenlo-memory export > memories.jsonl` and `qenlo-memory import memories.jsonl` move a memory between machines (import also reads mem0 exports).
 
@@ -59,6 +71,12 @@ every result looks like this:
 - a meaningful decision gets made, along with why.
 
 write one fact per call, and make it make sense to an agent with zero context. pass `--project` as the repo or folder name, or leave it off if it applies everywhere. saving the exact same text twice returns the existing memory.
+
+```sh
+qenlo-memory remember "the staging API listens on port 6543" --kind semantic --project my-project --key staging.api.port --expect 0
+```
+
+this records the first value for the key. on a later update, recall the current entry and pass its ID as `--expect`. if another agent updated it first, read the new entry before deciding whether to retry.
 
 ## when a fact changes
 
